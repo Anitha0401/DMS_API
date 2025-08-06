@@ -1,19 +1,30 @@
-﻿using DMS.Data.EF.Models;
+﻿using DMS.Data.EF.DTO;
+using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
 
 namespace DMS.Application.Interface;
 
 public interface IDMSService
 {
-    public Task<List<DmManual_Treeview>> GetTreeViewManualListAsync();
+    public Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync();
 
-    public Task<List<DmManual>> GetDmManualsAsync();
+    public Task<string?> GetManualContent(long dm_ManualID);
 
-    public Task<DmManual> GetDmManualDetailsAsync(int manualID);
+    public Task<List<DM_Manual_Attachments>> GetManualAttachmentListAsync(long dm_ManualID);
 
-    public Task AddDmManualAsync(DmManualDto manual);
+    public Task<List<Dm_ManualVersion_View>> GetDmManualsAsync();
 
-    public Task UpdateDmManualAsync(DmManual manual);
+    public Task<DM_Manual> GetDmManualDetailsAsync(long dm_ManualID);
 
-    public Task DeleteDmManualAsync(int manualID);
+    public Task<long> AddDmManualAsync(CreateManualDto request);
+
+    public Task<long> AddDmManualVersionAsync(CreateManualVersionDto request);
+
+    public Task<bool> ApproveManualAsync(ApproveManualDto request);
+
+    public Task UpdateDmManualAsync(DM_Manual manual);
+
+    public Task DeleteDmManualAsync(long dm_ManualID);
+
+    public Task DeleteDmManualVersionAsync(long dm_ManualID);
 }

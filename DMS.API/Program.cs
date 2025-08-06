@@ -21,6 +21,8 @@ services.AddEndpointsApiExplorer();
 
 services.AddServices(configuration);
 services.AddDependency(configuration);
+
+builder.AddAssociatedConfiguration();
 services.AddDistributedMemoryCache();
 
 services.AddMediatR(cfg =>
@@ -30,7 +32,6 @@ services.AddMediatR(cfg =>
 
 builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
-builder.AddAssociatedConfiguration();
 
 var app = builder.Build();
 
@@ -39,14 +40,26 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+   // app.UseDeveloperExceptionPage();
+}
+else
+{
+   // app.UseExceptionHandler("/Error");
 }
 
-app.UseHttpsRedirection();
+app.UseCors(builder =>
+{
+    builder.AllowAnyOrigin()
+           .AllowAnyMethod()
+           .AllowAnyHeader();
+});
+
 app.UseHttpLogging();
+app.UseHttpsRedirection();
 
-app.UseRouting();
+//app.UseRouting();
 
-app.UseCors("AllowAllOrigins");
+//app.UseCors("AllowAllOrigins");
 
 app.UseAuthentication();
 app.UseAuthorization();

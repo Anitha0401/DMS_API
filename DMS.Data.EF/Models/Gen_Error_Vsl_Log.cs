@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class GenErrorHqLog
+public partial class Gen_Error_Vsl_Log
 {
-    public long GenErrorHqLogId { get; set; }
+    public long Gen_Error_Vsl_LogID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
     public string ApplicationName { get; set; } = null!;
 
@@ -19,9 +19,7 @@ public partial class GenErrorHqLog
 
     public string? TextContents { get; set; }
 
-    public string LoggedInUserId { get; set; } = null!;
+    public string LoggedInUserID { get; set; } = null!;
 
     public DateTime AddedOn { get; set; }
-
-    public string? MachineWinLoginName { get; set; }
 }

@@ -3,15 +3,17 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class DmManualLog
+public partial class DM_Manual_Log
 {
-    public long DmManualLogId { get; set; }
+    public long DM_Manual_LogID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
-    public long DmManualId { get; set; }
+    public long DM_ManualID { get; set; }
+
+    public long DM_ManualVersionID { get; set; }
 
     public string Activity { get; set; } = null!;
 
@@ -22,6 +24,4 @@ public partial class DmManualLog
     public string? UserRank { get; set; }
 
     public string? UserName { get; set; }
-
-    public string? MachineWinLoginName { get; set; }
 }

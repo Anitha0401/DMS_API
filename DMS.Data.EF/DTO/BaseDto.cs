@@ -1,20 +1,18 @@
-﻿using System.Text.Json.Serialization;
-
-namespace DMS.Data.EF.Query;
+﻿namespace DMS.Data.EF.DTO;
 
 public class BaseDto
 {
-    public string Origin { get; set; } = null!;
+    public int VesselID { get; set; }
 
-    public int VesselId { get; set; }
-    
-    public DateTime CreatedDate { get; set; }
+    public required long DM_ManualID { get; set; }
 
-    public string? CreatedBy { get; set; }
+    public required long DM_ManualVersionID { get; set; }
 
-    public DateTime ModifiedBy { get; set; }
+    public string ManualName { get; set; } = string.Empty;
 
-    public string? ModifiedDate { get; set; }
+    public string UserID { get; set; } = string.Empty;
 
-    public int IsDeleted { get; set; }
+    public string UserRole { get; set; } = string.Empty;
+
+    public string Comments { get; set; } = string.Empty;
 }

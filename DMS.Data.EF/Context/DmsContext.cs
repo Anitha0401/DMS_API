@@ -12,34 +12,41 @@ public partial class DmsContext : DbContext
     {
         _dbActions = dbActions;
     }
-    
-    public DbSet<DmManual_Treeview> DmManual_Treeview { get; set; } = null!;
 
-    public virtual DbSet<DmManual> DmManuals { get; set; }
+    public virtual DbSet<Manual_TreeviewEntity> DmManual_Treeview { get; set; } = null!;
 
-    public virtual DbSet<DmManualApprovalSetting> DmManualApprovalSettings { get; set; }
+    public virtual DbSet<DM_Manual_Content> DmManualContent { get; set; } = null!;
 
-    public virtual DbSet<DmManualAttachment> DmManualAttachments { get; set; }
+    public virtual DbSet<DM_Manual> DmManuals { get; set; }
 
-    public virtual DbSet<DmManualCategory> DmManualCategories { get; set; }
+    public virtual DbSet<DM_ManualVersion> DmManualVersion { get; set; }
 
-    public virtual DbSet<DmManualLog> DmManualLogs { get; set; }
+    public virtual DbSet<DM_Manual_ApprovalSettings> DmManualApprovalSettings { get; set; }
 
-    public virtual DbSet<DmManualStatus> DmManualStatuses { get; set; }
+    public virtual DbSet<DM_Manual_Attachments> DmManualAttachments { get; set; }
 
-    public virtual DbSet<DmManualVsl> DmManualVsls { get; set; }
+    public virtual DbSet<DM_Category> Dm_Category { get; set; }
 
-    public virtual DbSet<DmManualVslAck> DmManualVslAcks { get; set; }
+    public virtual DbSet<DM_Manual_Log> DmManualLogs { get; set; }
 
-    public virtual DbSet<GenErrorHqLog> GenErrorHqLogs { get; set; }
+    public virtual DbSet<DM_Status> Dm_Status { get; set; }
 
-    public virtual DbSet<GenErrorVslLog> GenErrorVslLogs { get; set; }
+    public virtual DbSet<DM_Manual_RolesToAck> DmManualRolesToAck { get; set; }
 
-    public virtual DbSet<HqUser> HqUsers { get; set; }
+    public virtual DbSet<DM_Manual_UserAck> DmManualVslAcks { get; set; }
 
-    public virtual DbSet<VVessel> VVessels { get; set; }
+    public virtual DbSet<Gen_Error_HQ_Log> GenErrorHqLogs { get; set; }
 
-    public virtual DbSet<VslStaff> VslStaffs { get; set; }
+    public virtual DbSet<Gen_Error_Vsl_Log> GenErrorVslLogs { get; set; }
+
+    public virtual DbSet<HQ_UserRoles> HqUserRoles { get; set; }
+
+    public virtual DbSet<HQ_Users> HqUsers { get; set; }
+
+    public virtual DbSet<V_Vessel> VVessels { get; set; }
+
+    public virtual DbSet<Vsl_Staff> VslStaffs { get; set; }
+
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -49,33 +56,21 @@ public partial class DmsContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<DmManual>(entity =>
+        modelBuilder.Entity<DM_Manual>(entity =>
         {
             entity.ToTable("DM_Manual");
 
-            entity.Property(e => e.DmManualId)
+            entity.Property(e => e.DM_ManualID)
                 .ValueGeneratedNever()
                 .HasColumnName("DM_ManualID");
-            entity.Property(e => e.ApprovedBy)
-                .HasMaxLength(50)
-                .IsUnicode(false);
-            entity.Property(e => e.ApprovedDate).HasColumnType("datetime");
-            entity.Property(e => e.Comments)
-                .HasMaxLength(500)
-                .IsUnicode(false)
-                .HasDefaultValue("");
             entity.Property(e => e.CreatedBy)
                 .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.CreatedDate)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
-            entity.Property(e => e.DmManualCategoryId).HasColumnName("DM_ManualCategoryID");
-            entity.Property(e => e.DmManualStatusId).HasColumnName("DM_ManualStatusID");
-            entity.Property(e => e.FinalisedBy)
-                .HasMaxLength(50)
-                .IsUnicode(false);
-            entity.Property(e => e.FinalisedDate).HasColumnType("datetime");
+            entity.Property(e => e.DM_CategoryID).HasColumnName("DM_CategoryID");
+            entity.Property(e => e.DM_StatusID).HasColumnName("DM_StatusID");
             entity.Property(e => e.IsDeleted).HasDefaultValue(0);
             entity.Property(e => e.ManualCode)
                 .HasMaxLength(20)
@@ -90,22 +85,56 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
-            entity.Property(e => e.ParentId).HasColumnName("ParentID");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.ParentID).HasColumnName("ParentID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualApprovalSetting>(entity =>
+        modelBuilder.Entity<DM_ManualVersion>(entity =>
         {
-            entity.HasKey(e => e.DmApprovalSettingsId).HasName("PK_DM_ApprovalSettings");
+            entity.ToTable("DM_ManualVersion");
 
+            entity.Property(e => e.DM_ManualVersionID)
+                .ValueGeneratedNever()
+                .HasColumnName("DM_ManualVersionID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
+            entity.Property(e => e.ApprovedBy)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.ApprovedDate).HasColumnType("datetime");
+            entity.Property(e => e.Comments)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasDefaultValue("");
+            entity.Property(e => e.ReleasedBy)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.ReleasedDate)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.FinalisedBy)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.FinalisedDate).HasColumnType("datetime");
+            entity.Property(e => e.IsActive).HasDefaultValue(0);
+            entity.Property(e => e.IsCurrent).HasDefaultValue(0);
+            entity.Property(e => e.Origin)
+                .HasMaxLength(3)
+                .IsUnicode(false);
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
+        });
+
+        modelBuilder.Entity<DM_Manual_ApprovalSettings>(entity =>
+        {
+            entity.HasKey(e => e.DM_Manual_ApprovalSettingsID).HasName("PK_DM_ApprovalSettings");
+            
             entity.ToTable("DM_Manual_ApprovalSettings");
 
-            entity.Property(e => e.DmApprovalSettingsId)
+            entity.Property(e => e.DM_Manual_ApprovalSettingsID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_ApprovalSettingsID");
+                .HasColumnName("DM_Manual_ApprovalSettingsID");
             entity.Property(e => e.CanAddEmailApprovalLink).HasDefaultValue(0);
-            entity.Property(e => e.DmManualId).HasColumnName("DM_ManualID");
-            entity.Property(e => e.DmStatusId).HasColumnName("DM_StatusID");
+            entity.Property(e => e.DM_StatusID).HasColumnName("DM_StatusID");
+            entity.Property(e => e.Next_DM_StatusID).HasColumnName("Next_DM_StatusID");
             entity.Property(e => e.Hqdept)
                 .HasMaxLength(10)
                 .IsUnicode(false)
@@ -114,51 +143,51 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
-            entity.Property(e => e.SendBackDmStatusId)
+            entity.Property(e => e.SendBack_DM_StatusID)
                 .HasDefaultValue(-1L)
                 .HasColumnName("SendBack_DM_StatusID");
-            entity.Property(e => e.UserId)
+            entity.Property(e => e.UserID)
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasColumnName("UserID");
             entity.Property(e => e.UserRole)
                 .HasMaxLength(50)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualAttachment>(entity =>
+        modelBuilder.Entity<DM_Manual_Attachments>(entity =>
         {
-            entity.HasKey(e => e.DmManualAttachmentsId).HasName("PK_DM_ManualAttachments");
+            entity.HasKey(e => e.DM_Manual_AttachmentsID).HasName("PK_DM_ManualAttachments");
 
             entity.ToTable("DM_Manual_Attachments");
 
-            entity.Property(e => e.DmManualAttachmentsId)
+            entity.Property(e => e.DM_Manual_AttachmentsID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_ManualAttachmentsID");
+                .HasColumnName("DM_Manual_AttachmentsID");
             entity.Property(e => e.AddedOn)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
             entity.Property(e => e.BlobContents).HasColumnType("image");
-            entity.Property(e => e.DmManualId).HasColumnName("DM_ManualID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
             entity.Property(e => e.FileType)
                 .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualCategory>(entity =>
+        modelBuilder.Entity<DM_Category>(entity =>
         {
-            entity.HasKey(e => e.DmManualCategoryId).HasName("PK_DM_ManualCategory");
+            entity.HasKey(e => e.DM_CategoryID).HasName("PK_DM_Category");
 
-            entity.ToTable("DM_Manual_Category");
+            entity.ToTable("DM_Category");
 
-            entity.Property(e => e.DmManualCategoryId)
+            entity.Property(e => e.DM_CategoryID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_ManualCategoryID");
+                .HasColumnName("DM_CategoryID");
             entity.Property(e => e.CategoryCode)
                 .HasMaxLength(50)
                 .IsUnicode(false)
@@ -170,33 +199,27 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualLog>(entity =>
+        modelBuilder.Entity<DM_Manual_Log>(entity =>
         {
-            entity.HasKey(e => e.DmManualLogId).HasName("PK_DM_ManualLog");
+            entity.HasKey(e => e.DM_Manual_LogID).HasName("PK_DM_ManualLog");
 
             entity.ToTable("DM_Manual_Log");
 
-            entity.Property(e => e.DmManualLogId)
+            entity.Property(e => e.DM_Manual_LogID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_ManualLogID");
+                .HasColumnName("DM_Manual_LogID");
             entity.Property(e => e.Activity)
                 .HasMaxLength(120)
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI");
-            entity.Property(e => e.DmManualId).HasColumnName("DM_ManualID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
             entity.Property(e => e.Logdate)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
-            entity.Property(e => e.MachineWinLoginName)
-                .HasMaxLength(80)
-                .IsUnicode(false)
-                .HasDefaultValue("")
-                .UseCollation("Latin1_General_CI_AI")
-                .HasColumnName("Machine_WinLogin_Name");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
@@ -215,18 +238,18 @@ public partial class DmsContext : DbContext
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualStatus>(entity =>
+        modelBuilder.Entity<DM_Status>(entity =>
         {
-            entity.HasKey(e => e.DmManualStatusId).HasName("PK_DM_ManualStatus");
+            entity.HasKey(e => e.DM_StatusID).HasName("PK_DM_Status");
 
-            entity.ToTable("DM_Manual_Status");
+            entity.ToTable("DM_Status");
 
-            entity.Property(e => e.DmManualStatusId)
+            entity.Property(e => e.DM_StatusID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_ManualStatusID");
+                .HasColumnName("DM_StatusID");
             entity.Property(e => e.IsDisabled).HasDefaultValue(0);
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
@@ -239,17 +262,17 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.StatusName)
                 .HasMaxLength(150)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualVsl>(entity =>
+        modelBuilder.Entity<DM_Manual_RolesToAck>(entity =>
         {
-            entity.ToTable("DM_Manual_Vsl");
+            entity.ToTable("DM_Manual_RolesToAck");
 
-            entity.Property(e => e.DmManualVslId)
+            entity.Property(e => e.DM_Manual_RolesToAckID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_Manual_VslID");
-            entity.Property(e => e.DmManualId).HasColumnName("DM_ManualID");
+                .HasColumnName("DM_Manual_RolesToAckID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
             entity.Property(e => e.IsActive).HasDefaultValue(0);
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
@@ -257,25 +280,25 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.UserRank)
                 .HasMaxLength(50)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DmManualVslAck>(entity =>
+        modelBuilder.Entity<DM_Manual_UserAck>(entity =>
         {
-            entity.ToTable("DM_Manual_VslAck");
+            entity.ToTable("DM_Manual_UserAck");
 
-            entity.Property(e => e.DmManualVslAckId)
+            entity.Property(e => e.DM_Manual_UserAckID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_Manual_VslAckID");
-            entity.Property(e => e.AckDate).HasColumnType("datetime");
+                .HasColumnName("DM_Manual_UserAckID");
+            entity.Property(e => e.DateRead).HasColumnType("datetime");
             entity.Property(e => e.Comments)
                 .HasMaxLength(500)
                 .IsUnicode(false);
-            entity.Property(e => e.DmManualId).HasColumnName("DM_ManualID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
-            entity.Property(e => e.UserId)
+            entity.Property(e => e.UserID)
                 .HasMaxLength(150)
                 .IsUnicode(false)
                 .HasColumnName("UserID");
@@ -285,14 +308,14 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.UserRank)
                 .HasMaxLength(50)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<GenErrorHqLog>(entity =>
+        modelBuilder.Entity<Gen_Error_HQ_Log>(entity =>
         {
             entity.ToTable("Gen_Error_HQ_Log");
 
-            entity.Property(e => e.GenErrorHqLogId)
+            entity.Property(e => e.Gen_Error_HQ_LogID)
                 .ValueGeneratedNever()
                 .HasColumnName("Gen_Error_HQ_LogID");
             entity.Property(e => e.AddedOn)
@@ -308,18 +331,12 @@ public partial class DmsContext : DbContext
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI");
-            entity.Property(e => e.LoggedInUserId)
+            entity.Property(e => e.LoggedInUserID)
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI")
                 .HasColumnName("LoggedInUserID");
-            entity.Property(e => e.MachineWinLoginName)
-                .HasMaxLength(80)
-                .IsUnicode(false)
-                .HasDefaultValue("")
-                .UseCollation("Latin1_General_CI_AI")
-                .HasColumnName("Machine_WinLogin_Name");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false)
@@ -332,17 +349,17 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.TextContents)
                 .UseCollation("Latin1_General_CI_AI")
                 .HasColumnType("text");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<GenErrorVslLog>(entity =>
+        modelBuilder.Entity<Gen_Error_Vsl_Log>(entity =>
         {
-            entity.HasKey(e => new { e.GenErrorVslLogId, e.VesselId });
+            entity.HasKey(e => new { e.Gen_Error_Vsl_LogID, e.VesselID });
 
             entity.ToTable("Gen_Error_VSL_Log");
 
-            entity.Property(e => e.GenErrorVslLogId).HasColumnName("Gen_Error_VSL_LogID");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.Gen_Error_Vsl_LogID).HasColumnName("Gen_Error_VSL_LogID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
             entity.Property(e => e.AddedOn)
                 .HasDefaultValueSql("(getdate())")
                 .HasColumnType("datetime");
@@ -356,18 +373,12 @@ public partial class DmsContext : DbContext
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI");
-            entity.Property(e => e.LoggedInUserId)
+            entity.Property(e => e.LoggedInUserID)
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .UseCollation("Latin1_General_CI_AI")
                 .HasColumnName("LoggedInUserID");
-            entity.Property(e => e.MachineWinLoginName)
-                .HasMaxLength(80)
-                .IsUnicode(false)
-                .HasDefaultValue("")
-                .UseCollation("Latin1_General_CI_AI")
-                .HasColumnName("Machine_WinLogin_Name");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false)
@@ -382,13 +393,13 @@ public partial class DmsContext : DbContext
                 .HasColumnType("text");
         });
 
-        modelBuilder.Entity<HqUser>(entity =>
+        modelBuilder.Entity<HQ_Users>(entity =>
         {
-            entity.HasKey(e => e.HqUsersId);
+            entity.HasKey(e => e.HQ_UsersID);
 
             entity.ToTable("HQ_Users");
 
-            entity.Property(e => e.HqUsersId)
+            entity.Property(e => e.HQ_UsersID)
                 .ValueGeneratedNever()
                 .HasColumnName("HQ_UsersID");
             entity.Property(e => e.DateAdded).HasColumnType("datetime");
@@ -402,12 +413,12 @@ public partial class DmsContext : DbContext
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .HasColumnName("EMail");
-            entity.Property(e => e.EmpId)
+            entity.Property(e => e.EmpID)
                 .HasMaxLength(25)
                 .IsUnicode(false)
                 .HasDefaultValue("")
                 .HasColumnName("EmpID");
-            entity.Property(e => e.Hqdept)
+            entity.Property(e => e.HqDept)
                 .HasMaxLength(25)
                 .IsUnicode(false)
                 .HasColumnName("HQDept");
@@ -423,28 +434,57 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.Role)
                 .HasMaxLength(50)
                 .IsUnicode(false);
-            entity.Property(e => e.UserId)
+            entity.Property(e => e.UserID)
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasColumnName("UserID");
             entity.Property(e => e.UserName)
                 .HasMaxLength(250)
                 .IsUnicode(false);
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<VVessel>(entity =>
+        modelBuilder.Entity<HQ_UserRoles>(entity =>
+        {
+            entity.HasKey(e => e.HQ_UserRolesID);
+
+            entity.ToTable("HQ_UserRoles");
+
+            entity.Property(e => e.HQ_UserRolesID)
+                .ValueGeneratedNever()
+                .HasColumnName("HQ_UserRolesID");
+            entity.Property(e => e.Designation)
+                .HasMaxLength(150)
+                .IsUnicode(false)
+                .HasDefaultValue("");
+            entity.Property(e => e.HQDept)
+                .HasMaxLength(25)
+                .IsUnicode(false)
+                .HasColumnName("HQDept");
+            entity.Property(e => e.IsDisabled).HasDefaultValue(0);
+            entity.Property(e => e.Origin)
+                .HasMaxLength(3)
+                .IsUnicode(false)
+                .UseCollation("Latin1_General_CI_AI");
+            entity.Property(e => e.UserRole)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.ApprovalOrder).HasColumnName("ApprovalOrder");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
+        });
+
+        modelBuilder.Entity<V_Vessel>(entity =>
         {
             entity.ToTable("V_Vessel");
-
-            entity.Property(e => e.VVesselId)
+            
+            entity.Property(e => e.V_VesselID)
                 .ValueGeneratedNever()
                 .HasColumnName("V_VesselID");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false)
                 .UseCollation("Latin1_General_CI_AI");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
             entity.Property(e => e.VslCode)
                 .HasMaxLength(5)
                 .IsUnicode(false);
@@ -453,14 +493,14 @@ public partial class DmsContext : DbContext
                 .IsUnicode(false);
         });
 
-        modelBuilder.Entity<VslStaff>(entity =>
+        modelBuilder.Entity<Vsl_Staff>(entity =>
         {
-            entity.HasKey(e => new { e.VslStaffId, e.VesselId });
+            entity.HasKey(e => new { e.Vsl_StaffID, e.VesselID });
 
             entity.ToTable("Vsl_Staff");
 
-            entity.Property(e => e.VslStaffId).HasColumnName("Vsl_StaffID");
-            entity.Property(e => e.VesselId).HasColumnName("VesselID");
+            entity.Property(e => e.Vsl_StaffID).HasColumnName("Vsl_StaffID");
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false)
@@ -468,7 +508,7 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.UserDept)
                 .HasMaxLength(25)
                 .IsUnicode(false);
-            entity.Property(e => e.UserId)
+            entity.Property(e => e.UserID)
                 .HasMaxLength(50)
                 .IsUnicode(false)
                 .HasColumnName("UserID");
@@ -476,6 +516,18 @@ public partial class DmsContext : DbContext
                 .HasMaxLength(250)
                 .IsUnicode(false);
             entity.Property(e => e.UserRank).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<Manual_TreeviewDto>(eb =>
+        {
+            eb.HasNoKey();
+            eb.ToView(null); // prevents EF from expecting a database view/table
+        });
+
+        modelBuilder.Entity<Manual_TreeviewEntity>(eb =>
+        {
+            eb.HasNoKey();
+            eb.ToView(null); // prevents EF from expecting a database view/table
         });
 
         OnModelCreatingPartial(modelBuilder);

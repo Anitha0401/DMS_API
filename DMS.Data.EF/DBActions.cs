@@ -18,11 +18,7 @@ public class DBActions : IDBActions
     }
 }
 public class DBConnectionString
-{
-    public DBConnectionString()
-    {
-    }
-    
+{  
     public DBConnectionString(string _defaultConnection)
     {
         DefaultConnection = _defaultConnection;

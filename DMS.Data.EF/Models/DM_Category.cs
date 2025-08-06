@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class DmManualCategory
+public partial class DM_Category
 {
-    public long DmManualCategoryId { get; set; }
+    public long DM_CategoryID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
     public string? CategoryCode { get; set; }
 

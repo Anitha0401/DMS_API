@@ -3,15 +3,15 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class DmManualVsl
+public partial class DM_Manual_RolesToAck
 {
-    public long DmManualVslId { get; set; }
+    public long DM_Manual_RolesToAckID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
-    public long DmManualId { get; set; }
+    public long DM_ManualID { get; set; }
 
     public string UserRank { get; set; } = null!;
 

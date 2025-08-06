@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class VVessel
+public partial class V_Vessel
 {
-    public long VVesselId { get; set; }
+    public long V_VesselID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
     public string VslCode { get; set; } = null!;
 

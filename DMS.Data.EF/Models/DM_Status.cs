@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class DmManualStatus
+public partial class DM_Status
 {
-    public long DmManualStatusId { get; set; }
+    public long DM_StatusID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
     public string? StatusCode { get; set; }
 

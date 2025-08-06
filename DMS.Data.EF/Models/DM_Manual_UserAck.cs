@@ -3,15 +3,15 @@ using System.Collections.Generic;
 
 namespace DMS.Data.EF.Models;
 
-public partial class DmManualVslAck
+public partial class DM_Manual_UserAck
 {
-    public long DmManualVslAckId { get; set; }
+    public long DM_Manual_UserAckID { get; set; }
 
     public string Origin { get; set; } = null!;
 
-    public int VesselId { get; set; }
+    public int VesselID { get; set; }
 
-    public long DmManualId { get; set; }
+    public long DM_ManualID { get; set; }
 
     public int Version { get; set; }
 
@@ -19,9 +19,9 @@ public partial class DmManualVslAck
 
     public string? UserName { get; set; }
 
-    public string? UserId { get; set; }
+    public string? UserID { get; set; }
 
-    public DateTime? AckDate { get; set; }
+    public DateTime? DateRead { get; set; }
 
     public string? Comments { get; set; }
 
