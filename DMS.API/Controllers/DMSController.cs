@@ -51,7 +51,7 @@ namespace DMS.API.Controllers
         }
 
         [HttpGet("GetVesselList")]
-        public async Task<ActionResult<ManualCategoryDto>> GetVesselList()
+        public async Task<ActionResult<VesselListDto>> GetVesselList()
         {
             _logger.LogInformation("Get Vessel List");
 
@@ -61,7 +61,7 @@ namespace DMS.API.Controllers
         }
 
         [HttpGet("GetVslRankList")]
-        public async Task<ActionResult<ManualCategoryDto>> GetVslRankList()
+        public async Task<ActionResult<VslRankListDto>> GetVslRankList()
         {
             _logger.LogInformation("Get Vessel Rank List");
 
