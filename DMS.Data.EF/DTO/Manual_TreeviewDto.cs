@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,5 +14,20 @@ public class Manual_TreeviewDto
 
     public string Label { get; set; } = null!;
 
+    [NotMapped]
+    public TreeviewDataDto data { get; set; } = null!;
+
     public List<Manual_TreeviewDto> Children { get; set; } = new List<Manual_TreeviewDto>();
+}
+
+public class TreeviewDataDto
+{
+    public long DM_ManualID { get; set; }
+    
+    public long DM_ManualVersionID { get; set; }
+
+    public long ParentID { get; set; }
+
+    public int ManualLevel { get; set; }
+
 }

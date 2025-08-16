@@ -10,6 +10,14 @@ public interface IDMSService
 
     public Task<string?> GetManualContent(long dm_ManualID);
 
+    public Task<ManualContentDto> GetManualDetails(long dm_ManualID);
+
+    public Task<List<ManualCategoryDto>> GetManualCategory();
+
+    public Task<List<VesselListDto>> GetVesselList();
+
+    public Task<List<VslRankListDto>> GetVslRankList();
+
     public Task<List<DM_Manual_Attachments>> GetManualAttachmentListAsync(long dm_ManualID);
 
     public Task<List<Dm_ManualVersion_View>> GetDmManualsAsync();

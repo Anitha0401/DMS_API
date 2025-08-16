@@ -530,6 +530,12 @@ public partial class DmsContext : DbContext
             eb.ToView(null); // prevents EF from expecting a database view/table
         });
 
+        modelBuilder.Entity<TreeviewDataDto>(eb =>
+        {
+            eb.HasNoKey();
+            eb.ToView(null); // prevents EF from expecting a database view/table
+        });
+
         OnModelCreatingPartial(modelBuilder);
     }
 

@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Query;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -43,13 +44,12 @@ namespace DMS.Data.EF.Handler
                 if (next_DM_StatusID == 0)
                 {
                     //Call Publish 
-                    var publishDto = new DTO.PublishManualDto
+                    var publishDto = new PublishManualDto
                     {
                         DM_ManualID = request.Manual.DM_ManualID,
                         DM_ManualVersionID = request.Manual.DM_ManualVersionID,
                         UserID = request.Manual.UserID,
                         UserRole = request.Manual.UserRole,
-                        VesselID = request.Manual.VesselID,
                         Comments = request.Manual.Comments
                     };
                         

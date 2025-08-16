@@ -15,7 +15,7 @@ public partial class Vsl_Staff
 
     public string UserName { get; set; } = null!;
 
-    public byte[] UserRank { get; set; } = null!;
+    public string UserRank { get; set; } = null!;
 
     public string? UserDept { get; set; }
 

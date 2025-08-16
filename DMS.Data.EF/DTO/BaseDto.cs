@@ -2,8 +2,6 @@
 
 public class BaseDto
 {
-    public int VesselID { get; set; }
-
     public required long DM_ManualID { get; set; }
 
     public required long DM_ManualVersionID { get; set; }

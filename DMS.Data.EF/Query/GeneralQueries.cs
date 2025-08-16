@@ -1,4 +1,5 @@
 ﻿using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -120,7 +121,7 @@ public class GeneralQueries : IGeneralQueries
             return result?.ToString();
         }
     }
-
+    
     public async Task<bool> CheckDmManualAsync(int manualID)
     {
         return await _dmsContext.DmManuals.AnyAsync(e => e.DM_ManualID == manualID);

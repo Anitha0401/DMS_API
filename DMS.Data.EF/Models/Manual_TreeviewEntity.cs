@@ -11,6 +11,8 @@ public class Manual_TreeviewEntity
 {
     public long DM_ManualID { get; set; }
 
+    public long DM_ManualVersionID { get; set; }
+
     public string ManualNo { get; set; } = null!;
 
     public string? ManualCode { get; set; }

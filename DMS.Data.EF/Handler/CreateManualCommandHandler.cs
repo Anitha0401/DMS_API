@@ -33,22 +33,32 @@ namespace DMS.Data.EF.Handler
                             })
                             .ToList();
 
+            var parentID = request.Manual.CalledManualID;
+            if (request.Manual.CalledMode.ToUpper() == "Same Level".ToUpper())
+            {
+                parentID = manuals
+                            .Where(x => x.Item.DM_ManualID == request.Manual.CalledManualID)
+                            .Select(x => x.Item.ParentID)
+                            .FirstOrDefault();
+                if (parentID == 0) parentID = -1;
+            }
+
             #region Sort Order / Addl Sort Order
             var maxSortOrder = 0;
             var parentAddlSortOrder = "";
-            if (request.Manual.ParentID == -1)
+            if (parentID == -1)
             {
                 maxSortOrder = manuals.Max(x => x.ParsedSortOrder) + 1;
             }
             else
             {
                 var sortOrder1 = manuals
-                                .Where(x => x.Item.ParentID == request.Manual.ParentID || x.Item.DM_ManualID == request.Manual.ParentID)
+                                .Where(x => x.Item.ParentID == parentID || x.Item.DM_ManualID == parentID)
                                 .Max(x => (int?)x.ParsedSortOrder) ?? 0;
                 maxSortOrder = sortOrder1 + 1;
 
                 parentAddlSortOrder = manuals
-                                        .Where(x => x.Item.DM_ManualID == request.Manual.ParentID)
+                                        .Where(x => x.Item.DM_ManualID == parentID)
                                         .Select(x => x.Item.AddlSortOrder)
                                         .FirstOrDefault() ?? string.Empty;
             }
@@ -85,11 +95,11 @@ namespace DMS.Data.EF.Handler
             #region Manual No
             var nextManualNo = "0.0";
             var maxManualNo = await _dmsContext.DmManuals
-                                 .Where(x => x.ParentID == request.Manual.ParentID)
+                                 .Where(x => x.ParentID == parentID)
                                  .OrderByDescending(x => x.ManualNo)
                                  .Select(m => m.ManualNo)
                                  .FirstOrDefaultAsync();
-            if (request.Manual.ParentID == -1)
+            if (parentID == -1)
             {
                 if (decimal.TryParse(maxManualNo, out decimal currentVersion))
                 {
@@ -106,7 +116,7 @@ namespace DMS.Data.EF.Handler
             else
             {
                 maxManualNo = await _dmsContext.DmManuals
-                                    .Where(x => x.DM_ManualID == request.Manual.ParentID)
+                                    .Where(x => x.DM_ManualID == parentID)
                                     .OrderByDescending(x => x.ManualNo)
                                     .Select(m => m.ManualNo)
                                     .FirstOrDefaultAsync();
@@ -116,13 +126,17 @@ namespace DMS.Data.EF.Handler
 
             #region Manual Level
             var manualLevel = 0;
-            if (request.Manual.ParentID == -1)
+            if (parentID != -1)
             {
                 var parentManualLevel = await _dmsContext.DmManuals
-                                                 .Where(x => x.DM_ManualID == request.Manual.ParentID)
-                                                 .Select(m => m.ManualLevel)
-                                                 .FirstOrDefaultAsync();
-                manualLevel = parentManualLevel + 1;
+                                                   .Where(x => x.DM_ManualID == parentID)
+                                                   .Select(m => m.ManualLevel)
+                                                   .FirstOrDefaultAsync();
+                manualLevel = parentManualLevel;
+                if (request.Manual.CalledMode.ToUpper() == "Sub Level".ToUpper())
+                {
+                    manualLevel = parentManualLevel + 1;
+                }
             }
             #endregion
 
@@ -130,14 +144,16 @@ namespace DMS.Data.EF.Handler
             dmManual.DM_ManualID = (_dmsContext.DmManuals
                                  .Select(m => (long?)m.DM_ManualID)
                                  .Max() ?? 0) + 1;
-
             dmManual.Origin = "HQ";
             dmManual.VesselID = -1;
-            dmManual.DM_StatusID = _dmsContext.Dm_Status.FirstOrDefault(x => x.StatusName == "NEW")?.DM_StatusID ?? -1;
             dmManual.ManualNo = nextManualNo;
+            dmManual.DM_StatusID = _dmsContext.Dm_Status.FirstOrDefault(x => x.StatusName == "NEW")?.DM_StatusID ?? -1;
+            dmManual.ParentID = parentID;
             dmManual.ManualLevel = manualLevel;
+            dmManual.CanExport = 1;
             dmManual.SortOrder = sortOrder;
             dmManual.AddlSortOrder = addlSortOrder;
+            dmManual.CreatedDate = DateTime.UtcNow;
             dmManual.ModifiedBy = null;
             dmManual.ModifiedDate = null;
             dmManual.IsDeleted = 0;

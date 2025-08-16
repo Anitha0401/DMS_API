@@ -31,7 +31,14 @@ public class DMSService : IDMSService
         var lookup = manualList.ToDictionary(m => m.DM_ManualID, m => new Manual_TreeviewDto
         {
             Key = m.DM_ManualID,
-            Label = m.ManualNo + " - " + m.ManualName
+            Label = m.ManualNo + " - " + m.ManualName,
+            data = new TreeviewDataDto
+            {
+                DM_ManualID = m.DM_ManualID,
+                DM_ManualVersionID = m.DM_ManualVersionID,
+                ParentID = m.ParentID,
+                ManualLevel = m.ManualLevel
+            }
         });
 
         var root = new List<Manual_TreeviewDto>();
@@ -61,6 +68,103 @@ public class DMSService : IDMSService
     {
         return await _queries.GetDmManualContentAsync(dm_ManualID);
     }
+    public async Task<ManualContentDto> GetManualDetails(long dm_ManualID)
+    {
+        var categoryList = _dbContext.Dm_Category
+                                     .Where(x => x.IsDisabled == 0)
+                                     .ToList(); // Ensure the query is executed and materialized into a list
+
+        var manual = await _dbContext.DmManuals
+                                .Where(x => x.DM_ManualID == dm_ManualID)
+                                .Select(x => new ManualContentDto
+                                {
+                                    DM_ManualID = x.DM_ManualID,
+                                    ManualCode = x.ManualCode ?? string.Empty,
+                                    ManualName = x.ManualName,
+                                    ManualNo = x.ManualNo ?? string.Empty,
+                                    DM_CategoryID = x.DM_CategoryID,
+                                    CategoryName = _dbContext.Dm_Category
+                                                            .Where(v => v.DM_CategoryID == x.DM_CategoryID)
+                                                            .Select(v => v.CategoryName)
+                                                            .FirstOrDefault() ?? string.Empty,
+                                    TextContents = _dbContext.DmManualVersion
+                                                            .Where(v => v.DM_ManualID == x.DM_ManualID && v.IsActive == 1 && v.IsCurrent == 1)
+                                                            .Select(v => v.TextContents)
+                                                            .FirstOrDefault() ?? string.Empty
+                                })
+                                .FirstOrDefaultAsync();
+        return manual;
+    }
+
+    public async Task<List<Dm_ManualVersion_View>> GetDmManualsAsync()
+    {
+        var data = await (from manual in _dbContext.DmManuals
+                          join manualVersion in _dbContext.DmManualVersion
+                         on manual.VesselID equals manualVersion.VesselID
+                          where manualVersion.IsActive == 1 && manualVersion.IsCurrent == 1
+                        && manual.IsDeleted == 0
+                          select new Dm_ManualVersion_View()
+                          {
+                              DM_ManualID = manual.DM_ManualID,
+                              Origin = manual.Origin,
+                              VesselID = manual.VesselID,
+                              Version = manualVersion.Version,
+                              ManualCode = manual.ManualCode,
+                              ManualName = manual.ManualName,
+                              ManualNo = manual.ManualNo,
+                              DM_CategoryID = manual.DM_CategoryID,
+                              DM_StatusID = manual.DM_StatusID,
+                              CanExport = manual.CanExport,
+                              ManualLevel = manual.ManualLevel,
+                              SortOrder = manual.SortOrder,
+                              TextContents = manualVersion.TextContents,
+                              ApprovedBy = manualVersion.ApprovedBy,
+                              ApprovedDate = manualVersion.ApprovedDate,
+                              ReleasedBy = manualVersion.ReleasedBy,
+                              ReleasedDate = manualVersion.ReleasedDate,
+                              Comments = manualVersion.Comments,
+                              FinalisedBy = manualVersion.FinalisedBy,
+                              FinalisedDate = manualVersion.FinalisedDate,
+                          }).ToListAsync();
+
+        return data;
+    }
+
+
+    public async Task<List<ManualCategoryDto>> GetManualCategory()
+    {
+        var categoryList = await _dbContext.Dm_Category
+                                   .Where(x => x.IsDisabled == 0)
+                                   .Select(x => new ManualCategoryDto
+                                   {
+                                       DM_CategoryID = x.DM_CategoryID,
+                                       CategoryName = x.CategoryName
+                                   }).ToListAsync();
+        return categoryList;
+    }
+
+    public async Task<List<VesselListDto>> GetVesselList()
+    {
+        var vesselList = await _dbContext.VVessels
+                                      .Select(x => new VesselListDto
+                                      {
+                                          VesselID = x.VesselID,
+                                          VslName = x.VslName,
+                                          VslCode = x.VslCode
+                                      }).ToListAsync();
+        return vesselList;
+    }
+
+    public async Task<List<VslRankListDto>> GetVslRankList()
+    {
+        var vslRankList = await _dbContext.VslStaffs
+                                     .Select(x => new VslRankListDto
+                                     {
+                                         userRank = x.UserRank,
+                                         userRankDescription = x.UserRank
+                                     }).ToListAsync();
+        return vslRankList;
+    }
 
     public async Task<List<DM_Manual_Attachments>> GetManualAttachmentListAsync(long dm_ManualID)
     {
@@ -71,7 +175,7 @@ public class DMSService : IDMSService
         return attachments;
     }
 
-    public async Task<List<Dm_ManualVersion_View>> GetDmManualsAsync()
+    public async Task<List<Dm_ManualVersion_View>> GetDmManualsAsyncx()
     {
         var data = await (from manual in _dbContext.DmManuals
                     join manualVersion in _dbContext.DmManualVersion
@@ -156,7 +260,16 @@ public class DMSService : IDMSService
         if (manual == null)
             throw new ArgumentNullException(nameof(dm_ManualID), "The dm_ManualID provided does not exist.");
 
-        _dbContext.DmManuals.Remove(manual);
+
+        var manualVersionList = await _dbContext.DmManualVersion
+                                    .Where(x => x.DM_ManualID == dm_ManualID)
+                                    .ToListAsync();
+        foreach (var manualVersion in manualVersionList)
+        {
+            manualVersion.IsActive = 0;
+        }
+
+        manual.IsDeleted = 1;
         await _dbContext.SaveChangesAsync();
     }
 
@@ -168,7 +281,7 @@ public class DMSService : IDMSService
         if (manualVersion == null)
             throw new ArgumentNullException(nameof(dm_ManualVersionID), "The dm_ManualVersionID provided does not exist.");
 
-        _dbContext.DmManualVersion.Remove(manualVersion);
+        manualVersion.IsActive = 0;
         await _dbContext.SaveChangesAsync();
     }
 }

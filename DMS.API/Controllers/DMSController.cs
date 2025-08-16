@@ -40,6 +40,45 @@ namespace DMS.API.Controllers
             return Ok(manualContent);
         }
 
+        [HttpGet("GetManualCategory")]
+        public async Task<ActionResult<ManualCategoryDto>> GetManualCategory()
+        {
+            _logger.LogInformation("Get Manual Category");
+
+            var manualCategory = await _service.GetManualCategory();
+
+            return Ok(manualCategory);
+        }
+
+        [HttpGet("GetVesselList")]
+        public async Task<ActionResult<ManualCategoryDto>> GetVesselList()
+        {
+            _logger.LogInformation("Get Vessel List");
+
+            var vesselList = await _service.GetVesselList();
+
+            return Ok(vesselList);
+        }
+
+        [HttpGet("GetVslRankList")]
+        public async Task<ActionResult<ManualCategoryDto>> GetVslRankList()
+        {
+            _logger.LogInformation("Get Vessel Rank List");
+
+            var vslRankList = await _service.GetVslRankList();
+
+            return Ok(vslRankList);
+        }
+
+
+        [HttpGet("GetManualDetails")]
+        public async Task<ActionResult<DM_Manual>> GetManualDetails(long dm_ManualID) // Mark method as async
+        {
+            var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
+
+            return Ok(manualList);
+        }
+
         [HttpGet("GetManualAttachments")]
         public async Task<ActionResult<List<DM_Manual_Attachments>>> GetManualAttachments(long dm_ManualID)
         {
@@ -73,7 +112,7 @@ namespace DMS.API.Controllers
         public async Task<ActionResult> EditManual(CreateManualVersionDto manual) // Mark method as async
         {
             // Validation
-
+            //Call Edit
             var dm_ManualVersionID = await _service.AddDmManualVersionAsync(manual); // Await the async method
 
             return Ok(dm_ManualVersionID);
@@ -83,7 +122,7 @@ namespace DMS.API.Controllers
         public async Task<ActionResult> EditManualVersion(CreateManualVersionDto manual) // Mark method as async
         {
             // Validation
-
+            // Edit need to apply logi
             var dm_ManualVersionID = await _service.AddDmManualVersionAsync(manual); // Await the async method
 
             return Ok(dm_ManualVersionID);
@@ -122,6 +161,7 @@ namespace DMS.API.Controllers
         [HttpDelete("DeleteManual/{dm_ManualID}")]
         public async Task<ActionResult> DeleteManual(long dm_ManualID) // Mark method as async
         {
+            // object
             // Validation
 
             await _service.DeleteDmManualAsync(dm_ManualID); // Await the async method
@@ -137,22 +177,6 @@ namespace DMS.API.Controllers
             await _service.DeleteDmManualVersionAsync(dm_ManualID); // Await the async method
 
             return Ok();
-        }
-
-        [HttpGet("GetDM_Manual")]
-        public async Task<ActionResult<List<DM_Manual>>> GetDM_ManualList() // Mark method as async
-        {
-            _logger.LogInformation("Get DM_Manual List");
-
-            var manualList = await _service.GetDmManualsAsync(); // Await the async method
-
-            foreach (var s in manualList)
-            {
-                Console.WriteLine($"Name: {s.ManualName}, Id: {s.DM_ManualID}");
-                Console.WriteLine(new string('-', 30));
-            }
-
-            return Ok(manualList);
         }
     }
 }
