@@ -88,15 +88,15 @@ public class GeneralQueries : IGeneralQueries
         await _dmsContext.SaveChangesAsync();
     }
 
-    public async Task<string?> GetDmManualContentAsync(long dm_ManualID)
+    public async Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals)
     {
         var result = await _dmsContext.DmManualContent
-                           .FromSqlInterpolated($"EXEC GetManualAndSubManualContent @DM_ManualID = {dm_ManualID}")
-                           .AsNoTracking()
-                           .ToListAsync();
+                                .FromSqlInterpolated($"EXEC GetManualAndSubManualContent @DM_ManualID = {dm_ManualID}, @IncludeSubManuals = {includeSubManuals}")
+                                .AsNoTracking()
+                                .ToListAsync();
 
-        var content = result[0]?.ManualContent;
-        if (content == null) content = "";
+        var content = result.Count > 0 ? result[0]?.ManualContent : "";
+
         return content;
     }
 

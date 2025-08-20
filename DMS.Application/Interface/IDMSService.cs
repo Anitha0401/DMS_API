@@ -8,9 +8,9 @@ public interface IDMSService
 {
     public Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync();
 
-    public Task<string?> GetManualContent(long dm_ManualID);
+    public Task<string?> GetManualContent(long dm_ManualID, bool includeSubManuals);
 
-    public Task<ManualContentDto> GetManualDetails(long dm_ManualID);
+    public Task<ManualContentDto?> GetManualDetails(long dm_ManualID);
 
     public Task<List<ManualCategoryDto>> GetManualCategory();
 

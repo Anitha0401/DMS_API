@@ -36,6 +36,7 @@ public class DMSService : IDMSService
             {
                 DM_ManualID = m.DM_ManualID,
                 DM_ManualVersionID = m.DM_ManualVersionID,
+                Version = m.Version,
                 ParentID = m.ParentID,
                 ManualLevel = m.ManualLevel
             }
@@ -64,11 +65,11 @@ public class DMSService : IDMSService
         return root;
     }
 
-    public async Task<string?> GetManualContent(long dm_ManualID)
+    public async Task<string?> GetManualContent(long dm_ManualID, bool includeSubManuals)
     {
-        return await _queries.GetDmManualContentAsync(dm_ManualID);
+        return await _queries.GetDmManualContentAsync(dm_ManualID, includeSubManuals);
     }
-    public async Task<ManualContentDto> GetManualDetails(long dm_ManualID)
+    public async Task<ManualContentDto?> GetManualDetails(long dm_ManualID)
     {
         var categoryList = _dbContext.Dm_Category
                                      .Where(x => x.IsDisabled == 0)
@@ -93,6 +94,7 @@ public class DMSService : IDMSService
                                                             .FirstOrDefault() ?? string.Empty
                                 })
                                 .FirstOrDefaultAsync();
+
         return manual;
     }
 

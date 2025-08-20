@@ -26,6 +26,8 @@ public class TreeviewDataDto
     
     public long DM_ManualVersionID { get; set; }
 
+    public string Version { get; set; }
+
     public long ParentID { get; set; }
 
     public int ManualLevel { get; set; }

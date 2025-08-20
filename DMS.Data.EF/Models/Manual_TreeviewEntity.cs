@@ -19,6 +19,8 @@ public class Manual_TreeviewEntity
 
     public string ManualName { get; set; } = null!;
 
+    public string Version { get; set; }
+
     public long ParentID { get; set; }
 
     public int ManualLevel { get; set; }

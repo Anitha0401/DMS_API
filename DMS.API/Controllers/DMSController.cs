@@ -32,10 +32,10 @@ namespace DMS.API.Controllers
         }
 
         [HttpGet("GetManualContent")]
-        public async Task<ActionResult<string?>> GetManualContent(long dm_ManualID)
+        public async Task<ActionResult<string?>> GetManualContent(long dm_ManualID, bool includeSubManuals)
         {
             _logger.LogInformation("Get Manual Content");
-            var manualContent = await _service.GetManualContent(dm_ManualID); // Await the async method
+            var manualContent = await _service.GetManualContent(dm_ManualID, includeSubManuals); // Await the async method
 
             return Ok(manualContent);
         }
