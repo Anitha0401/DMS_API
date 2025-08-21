@@ -10,7 +10,7 @@ public class EditManualDto : BaseDto
 
     public string CalledMode { get; set; } = string.Empty;
 
-    public List<int>? VesselIDList { get; set; }
+    public List<int>? VesselIdList { get; set; }
 
-    public List<string>? VslRankList { get; set; }
+    public List<string>? VesselRankList { get; set; }
 }

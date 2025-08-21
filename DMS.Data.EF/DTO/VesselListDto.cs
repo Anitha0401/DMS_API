@@ -13,5 +13,7 @@ namespace DMS.Data.EF.DTO
         public string VslName { get; set; } = null!;
         
         public string VslCode { get; set; } = null!;
+
+        public string? VslType { get; set; } = null!;
     }
 }

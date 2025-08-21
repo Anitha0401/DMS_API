@@ -71,8 +71,8 @@ namespace DMS.API.Controllers
         }
 
 
-        [HttpGet("GetManualDetails")]
-        public async Task<ActionResult<DM_Manual>> GetManualDetails(long dm_ManualID) // Mark method as async
+        [HttpGet("GetManualById/{dm_ManualID}")]
+        public async Task<ActionResult<Dm_ManualDetails>> GetManualDetails(long dm_ManualID) // Mark method as async
         {
             var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
 
@@ -109,13 +109,13 @@ namespace DMS.API.Controllers
         }
 
         [HttpPost("EditManual")]
-        public async Task<ActionResult> EditManual(CreateManualVersionDto manual) // Mark method as async
+        public async Task<ActionResult> EditManual(EditManualDto manual) // Mark method as async
         {
             // Validation
             //Call Edit
-            var dm_ManualVersionID = await _service.AddDmManualVersionAsync(manual); // Await the async method
+            await _service.UpdateDmManualAsync(manual); // Await the async method
 
-            return Ok(dm_ManualVersionID);
+            return Ok();
         }
 
         [HttpPost("EditManualVersion")]

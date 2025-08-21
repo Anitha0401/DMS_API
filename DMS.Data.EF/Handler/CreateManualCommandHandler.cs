@@ -169,7 +169,7 @@ namespace DMS.Data.EF.Handler
             dmManualVersion.DM_ManualID = dmManual.DM_ManualID;
             dmManualVersion.Origin = "HQ";
             dmManualVersion.VesselID = -1;
-            dmManualVersion.Version = 1; // Default version for new manuals
+            dmManualVersion.Version = "1.0"; // Default version for new manuals
             dmManualVersion.IsActive = 1;
             dmManualVersion.IsCurrent = 0;
             _dmsContext.DmManualVersion.Add(dmManualVersion);

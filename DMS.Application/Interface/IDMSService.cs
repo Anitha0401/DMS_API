@@ -22,7 +22,7 @@ public interface IDMSService
 
     public Task<List<Dm_ManualVersion_View>> GetDmManualsAsync();
 
-    public Task<DM_Manual> GetDmManualDetailsAsync(long dm_ManualID);
+    public Task<Dm_ManualDetails> GetDmManualDetailsAsync(long dm_ManualID);
 
     public Task<long> AddDmManualAsync(CreateManualDto request);
 
@@ -30,7 +30,7 @@ public interface IDMSService
 
     public Task<bool> ApproveManualAsync(ApproveManualDto request);
 
-    public Task UpdateDmManualAsync(DM_Manual manual);
+    public Task<bool> UpdateDmManualAsync(EditManualDto request);
 
     public Task DeleteDmManualAsync(long dm_ManualID);
 

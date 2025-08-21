@@ -14,4 +14,6 @@ public partial class V_Vessel
     public string VslCode { get; set; } = null!;
 
     public string VslName { get; set; } = null!;
+
+    public string? VslType { get; set; } = null!;
 }

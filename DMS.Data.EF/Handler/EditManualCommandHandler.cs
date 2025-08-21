@@ -86,7 +86,7 @@ namespace DMS.Data.EF.Handler
             {
                 _dmsContext.DmManuals.Update(dmManual);
                 _dmsContext.DmManualVersion.Update(dmManualVersion);
-                await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
+                //await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
             }
 
             //Vessel and Roles to Ack
@@ -94,11 +94,11 @@ namespace DMS.Data.EF.Handler
                                  .Select(m => (long?)m.DM_Manual_RolesToAckID)
                                  .Max() ?? 0);
 
-            if (request.Manual.VesselIDList != null && request.Manual.VslRankList != null)
+            if (request.Manual.VesselIdList != null && request.Manual.VesselRankList != null)
             {
-                foreach (int vesslID in request.Manual.VesselIDList)
+                foreach (int vesslID in request.Manual.VesselIdList)
                 {
-                    foreach (string vslRank in request.Manual.VslRankList)
+                    foreach (string vslRank in request.Manual.VesselRankList)
                     {
                         bool exists = _dmsContext.DmManualRolesToAck.Any(u => u.VesselID == vesslID && u.UserRank == vslRank);
 

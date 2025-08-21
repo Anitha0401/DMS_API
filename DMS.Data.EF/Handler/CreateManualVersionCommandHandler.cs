@@ -23,10 +23,26 @@ namespace DMS.Data.EF.Handler
         {
             var dmManualVersion = _mapper.Map<DM_ManualVersion>(request.manualVersion);
 
-            var nextVersion = (_dmsContext.DmManualVersion
-                                .Where(x => x.DM_ManualID == request.manualVersion.DM_ManualID)
-                                .Select(m => (int?)m.Version)
-                                .Max() ?? 0) + 1;
+            var currentVersion = _dmsContext.DmManualVersion
+                                    .Where(x => x.DM_ManualID == request.manualVersion.DM_ManualID)
+                                    .Select(m => m.Version)
+                                    .FirstOrDefault(); // Ensure we retrieve a single version string
+
+            if (string.IsNullOrEmpty(currentVersion))
+            {
+                throw new InvalidOperationException("No current version found for the specified manual ID.");
+            }
+
+            string[] parts = currentVersion.Split('.', StringSplitOptions.RemoveEmptyEntries);
+            int major = int.Parse(parts[0]);
+            int minor = int.Parse(parts[1]);
+
+            // Next minor version
+            string nextMinor = $"{major}.{minor + 1}";
+
+            // Next major version
+            string nextVersion = $"{major + 1}.0";
+
             dmManualVersion.Version = nextVersion;
             dmManualVersion.Origin = "HQ";
             dmManualVersion.VesselID = -1;
