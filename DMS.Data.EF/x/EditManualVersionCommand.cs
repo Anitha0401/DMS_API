@@ -1,7 +1,6 @@
-﻿using DMS.Data.EF.DTO;
-using MediatR;
+﻿using MediatR;
 
-namespace DMS.Data.EF.Query
+namespace DMS.Data.EF.x
 {
     public class EditManualVersionCommand : IRequest<bool>
     {

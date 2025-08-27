@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
 using MediatR;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Handler
 {
-    public class CreateManualCommandHandler : IRequestHandler<CreateManualCommand, long>
+    public class CreateManualCommandHandler : IRequestHandler<CreateManualCommand, CreateManualResultDto>
     {
         private readonly IMapper _mapper;
         private readonly GeneralQueries _queries;
@@ -20,7 +21,7 @@ namespace DMS.Data.EF.Handler
             _queries = queries;
         }
 
-        public async Task<long> Handle(CreateManualCommand request, CancellationToken cancellationToken)
+        public async Task<CreateManualResultDto> Handle(CreateManualCommand request, CancellationToken cancellationToken)
         {
             var dmManual = _mapper.Map<DM_Manual>(request.Manual);
 
@@ -109,7 +110,7 @@ namespace DMS.Data.EF.Handler
             else if (maxManualNo != null)
             {
                 var major = maxManualNo.Substring(0, maxManualNo.LastIndexOf('.'));
-                var parts = maxManualNo.Split('.');
+                string[] parts = maxManualNo.Split('.');
                 int minor = int.Parse(parts[parts.Length - 1]) + 1;
                 nextManualNo = $"{major}.{minor.ToString()}";
             }
@@ -174,36 +175,15 @@ namespace DMS.Data.EF.Handler
             dmManualVersion.IsCurrent = 0;
             _dmsContext.DmManualVersion.Add(dmManualVersion);
 
-            //Vessel and Roles to Ack
-            var nextDM_Manual_RolesToAckID = (_dmsContext.DmManualRolesToAck
-                                 .Select(m => (long?)m.DM_Manual_RolesToAckID)
-                                 .Max() ?? 0);
-
-            if (request.Manual.VesselIDList != null && request.Manual.VslRankList != null)
-            {
-                foreach (int vesslID in request.Manual.VesselIDList)
-                {
-                    foreach (string vslRank in request.Manual.VslRankList)
-                    {
-                        nextDM_Manual_RolesToAckID = nextDM_Manual_RolesToAckID + 1;
-
-                        var roleToAck = new DM_Manual_RolesToAck();
-                        roleToAck.DM_Manual_RolesToAckID = nextDM_Manual_RolesToAckID;
-                        roleToAck.Origin = "HQ";
-                        roleToAck.DM_ManualID = dmManual.DM_ManualID;
-                        roleToAck.VesselID = vesslID;
-                        roleToAck.UserRank = vslRank;
-                        roleToAck.IsActive = 1;
-                        _dmsContext.DmManualRolesToAck.Add(roleToAck);
-                    }
-                }
-            }
-
             await _dmsContext.SaveChangesAsync(cancellationToken);
 
             await _queries.AddToLog(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "New Manual Added", "Manual Name: " + dmManual.ManualName);
 
-            return dmManual.DM_ManualID;
+            return new CreateManualResultDto
+            {
+                ManualId = dmManual.DM_ManualID,
+                ManualVersionId = dmManualVersion.DM_ManualVersionID
+            };
         }
     }
 }

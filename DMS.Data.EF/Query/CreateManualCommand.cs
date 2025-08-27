@@ -1,8 +1,9 @@
-﻿using MediatR;
+﻿using DMS.Data.EF.DTO;
+using MediatR;
 
 namespace DMS.Data.EF.Query
 {
-    public class CreateManualCommand : IRequest<long>
+    public class CreateManualCommand : IRequest<CreateManualResultDto>
     {
         public CreateManualDto Manual { get; set; }
 

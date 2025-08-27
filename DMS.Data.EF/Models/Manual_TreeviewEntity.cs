@@ -19,7 +19,9 @@ public class Manual_TreeviewEntity
 
     public string ManualName { get; set; } = null!;
 
-    public string Version { get; set; }
+    public string? Version { get; set; }
+    
+    public string? StatusString { get; set; }
 
     public long ParentID { get; set; }
 

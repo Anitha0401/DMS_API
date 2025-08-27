@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
 
 namespace DMS.Data.EF.Mapping;
 

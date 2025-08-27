@@ -37,7 +37,7 @@ namespace DMS.Data.EF.Handler
                 throw new ArgumentNullException(nameof(dmManualVersion), "Manual version not exists");
             }
 
-            var dm_StatusID = _dmsContext.Dm_Status.FirstOrDefault(x => x.StatusName == "PUBLISH")?.DM_StatusID;
+            var dm_StatusID = _dmsContext.Dm_Status.FirstOrDefault(x => x.StatusName == "To Review")?.DM_StatusID;
             if (dm_StatusID == null)
             {
                 throw new ArgumentNullException(nameof(dm_StatusID), "Status ID for 'PUBLISH' not found");

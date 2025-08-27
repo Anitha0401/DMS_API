@@ -31,7 +31,9 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<DM_Status> Dm_Status { get; set; }
 
-    public virtual DbSet<DM_Manual_RolesToAck> DmManualRolesToAck { get; set; }
+    public virtual DbSet<DM_Manual_ToAck_Vsl> DmManual_ToAck_Vsl { get; set; }
+
+    public virtual DbSet<DM_Manual_ToAck_HQ> DmManual_ToAck_HQ { get; set; }
 
     public virtual DbSet<DM_Manual_UserAck> DmManualVslAcks { get; set; }
 
@@ -265,19 +267,38 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.VesselID).HasColumnName("VesselID");
         });
 
-        modelBuilder.Entity<DM_Manual_RolesToAck>(entity =>
+        modelBuilder.Entity<DM_Manual_ToAck_Vsl>(entity =>
         {
-            entity.ToTable("DM_Manual_RolesToAck");
+            entity.ToTable("DM_Manual_ToAck_Vsl");
 
-            entity.Property(e => e.DM_Manual_RolesToAckID)
+            entity.Property(e => e.DM_Manual_ToAck_VslID)
                 .ValueGeneratedNever()
-                .HasColumnName("DM_Manual_RolesToAckID");
+                .HasColumnName("DM_Manual_ToAck_VslID");
             entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
             entity.Property(e => e.IsActive).HasDefaultValue(0);
             entity.Property(e => e.Origin)
                 .HasMaxLength(3)
                 .IsUnicode(false);
             entity.Property(e => e.UserRank)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.VesselID).HasColumnName("VesselID");
+        });
+
+        modelBuilder.Entity<DM_Manual_ToAck_HQ>(entity =>
+        {
+            entity.ToTable("DM_Manual_ToAck_HQ");
+
+            entity.Property(e => e.DM_Manual_ToAck_HQID)
+                .ValueGeneratedNever()
+                .HasColumnName("DM_Manual_ToAck_HQID");
+            entity.Property(e => e.DM_ManualID).HasColumnName("DM_ManualID");
+            entity.Property(e => e.HQ_UsersID).HasColumnName("HQ_UsersID");
+            entity.Property(e => e.IsActive).HasDefaultValue(0);
+            entity.Property(e => e.Origin)
+                .HasMaxLength(3)
+                .IsUnicode(false);
+            entity.Property(e => e.UserRole)
                 .HasMaxLength(50)
                 .IsUnicode(false);
             entity.Property(e => e.VesselID).HasColumnName("VesselID");

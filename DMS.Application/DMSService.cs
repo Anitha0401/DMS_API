@@ -36,7 +36,8 @@ public class DMSService : IDMSService
             {
                 DM_ManualID = m.DM_ManualID,
                 DM_ManualVersionID = m.DM_ManualVersionID,
-                Version = m.Version,
+                ManualVersion = m.Version,
+                StatusString = m.StatusString,
                 ParentID = m.ParentID,
                 ManualLevel = m.ManualLevel
             }
@@ -132,7 +133,6 @@ public class DMSService : IDMSService
         return data;
     }
 
-
     public async Task<List<ManualCategoryDto>> GetManualCategory()
     {
         var categoryList = await _dbContext.Dm_Category
@@ -167,6 +167,18 @@ public class DMSService : IDMSService
                                          userRankDescription = x.UserRank
                                      }).ToListAsync();
         return vslRankList;
+    }
+   
+    public async Task<List<HQUserListDto>> GetHQUserList()
+    {
+        var hQUserLists = await _dbContext.HqUserRoles
+                                     .Select(x => new HQUserListDto
+                                     {
+                                         UserRole = x.UserRole,
+                                         RoleDescription = x.Designation,
+                                         HQDept = x.HQDept
+                                     }).ToListAsync();
+        return hQUserLists;
     }
 
     public async Task<List<DM_Manual_Attachments>> GetManualAttachmentListAsync(long dm_ManualID)
@@ -225,7 +237,7 @@ public class DMSService : IDMSService
 
         return data;
     }
-
+    
     public async Task<Dm_ManualDetails> GetDmManualDetailsAsync(long dm_ManualID)
     {
         var data = await (from manual in _dbContext.DmManuals
@@ -250,14 +262,34 @@ public class DMSService : IDMSService
                               CanExport = manual.CanExport,
                               TextContents = manualVersion.TextContents,
                               Comments = manualVersion.Comments,
-                              VesselIdList = _dbContext.DmManualRolesToAck
+                          }).FirstOrDefaultAsync();
+
+        if (data == null)
+            throw new ArgumentNullException(nameof(data), "The manual provided does not exist.");
+
+        return data;
+    }
+  
+    public async Task<Dm_ManualRights> GetDmManualRightsAsync(long dm_ManualID)
+    {
+        var data = await (from manual in _dbContext.DmManuals
+                          where manual.DM_ManualID == dm_ManualID
+                          select new Dm_ManualRights()
+                          {
+                              DM_ManualID = manual.DM_ManualID,
+                              VesselIdList = _dbContext.DmManual_ToAck_Vsl
                                   .Where(r => r.DM_ManualID == manual.DM_ManualID)
                                   .Select(r => r.VesselID)
                                   .Distinct()
                                   .ToList(),
-                              VesselRankList = _dbContext.DmManualRolesToAck
+                              VesselRankList = _dbContext.DmManual_ToAck_Vsl
                                   .Where(r => r.DM_ManualID == manual.DM_ManualID)
                                   .Select(r => r.UserRank)
+                                  .Distinct()
+                                  .ToList(),
+                              HQ_UsersID = _dbContext.DmManual_ToAck_HQ
+                                  .Where(r => r.DM_ManualID == manual.DM_ManualID)
+                                  .Select(r => r.HQ_UsersID)
                                   .Distinct()
                                   .ToList(),
                           }).FirstOrDefaultAsync();
@@ -268,31 +300,13 @@ public class DMSService : IDMSService
         return data;
     }
 
-    public async Task<long> AddDmManualAsync(CreateManualDto manual)
+    public async Task<CreateManualResultDto> AddDmManualAsync(CreateManualDto manual)
     {
         if (manual == null) throw new ArgumentNullException(nameof(manual));
 
-        var dm_ManualId = await _mediator.Send(new CreateManualCommand(manual));
+        var result = await _mediator.Send(new CreateManualCommand(manual));
 
-        return dm_ManualId;
-    }
-
-    public async Task<long> AddDmManualVersionAsync(CreateManualVersionDto manual)
-    {
-        if (manual == null) throw new ArgumentNullException(nameof(manual));
-
-        var dm_ManualVersionId = await _mediator.Send(new CreateManualVersionCommand(manual));
-
-        return dm_ManualVersionId;
-    }
-
-    public async Task<bool> ApproveManualAsync(ApproveManualDto request)
-    {
-        if (request == null) throw new ArgumentNullException(nameof(request));
-
-        await _mediator.Send(new ApproveManualCommand(request));
-
-        return true;
+        return result;
     }
 
     public async Task<bool> UpdateDmManualAsync(EditManualDto request)
@@ -304,28 +318,13 @@ public class DMSService : IDMSService
         return true;
     }
 
-    public async Task UpdateManualTeset(EditManualDto request)
-    { 
-        // Fetch the manual
-        var manual = await _dbContext.DmManuals.FirstOrDefaultAsync(m => m.DM_ManualID == request.DM_ManualID);
-        if (manual == null) throw new ArgumentException("Manual not found.", nameof(request.DM_ManualID));
+    public async Task<bool> ApproveManualAsync(ApproveManualDto request)
+    {
+        if (request == null) throw new ArgumentNullException(nameof(request));
 
-        // Update manual fields
-        manual.DM_CategoryID = request.DM_CategoryID;
-        manual.ManualCode = request.ManualCode;
-        manual.ManualName = request.ManualName;
-      
-        // Fetch the current version (IsActive == 1 && IsCurrent == 1)
-        var manualVersion = await _dbContext.DmManualVersion.FirstOrDefaultAsync(m => m.DM_ManualVersionID == request.DM_ManualVersionID);
+        await _mediator.Send(new ApproveManualCommand(request));
 
-        if (manualVersion != null && !string.IsNullOrEmpty(request.TextContents))
-        {
-            manualVersion.TextContents = request.TextContents;
-            _dbContext.Entry(manualVersion).State = EntityState.Modified;
-        }
-
-        _dbContext.Entry(manual).State = EntityState.Modified;
-        await _dbContext.SaveChangesAsync();
+        return true;
     }
 
     public async Task DeleteDmManualAsync(long dm_ManualID)

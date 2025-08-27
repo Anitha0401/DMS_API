@@ -25,7 +25,7 @@ public partial class Dm_ManualVersion_View
 
     public long DM_StatusID { get; set; }
 
-    public string Version { get; set; }
+    public string? Version { get; set; }
 
     public string? TextContents { get; set; } = null!;
 

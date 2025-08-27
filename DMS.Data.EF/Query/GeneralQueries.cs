@@ -43,10 +43,11 @@ public class GeneralQueries : IGeneralQueries
                 ManualNo = reader.GetString(1),
                 ManualCode = reader.IsDBNull(2) ? null : reader.GetString(2),
                 ManualName = reader.GetString(3),
-                ParentID = reader.GetInt64(4),
-                ManualLevel = reader.GetInt32(5),
-                SortOrder = reader.IsDBNull(6) ? null : reader.GetString(6),
-                AddlSortOrder = reader.IsDBNull(7) ? null : reader.GetString(7)
+                StatusString = reader.GetString(4),
+                ParentID = reader.GetInt64(5),
+                ManualLevel = reader.GetInt32(6),
+                SortOrder = reader.IsDBNull(7) ? null : reader.GetString(7),
+                AddlSortOrder = reader.IsDBNull(8) ? null : reader.GetString(8)
             });
         }
 

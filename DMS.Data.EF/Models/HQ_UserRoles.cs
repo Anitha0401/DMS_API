@@ -11,7 +11,7 @@ public partial class HQ_UserRoles
 
     public int VesselID { get; set; }
 
-    public string? HQDept { get; set; }
+    public string HQDept { get; set; } = null!;
 
     public string UserRole { get; set; } = null!;
 

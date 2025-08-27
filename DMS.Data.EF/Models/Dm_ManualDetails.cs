@@ -30,8 +30,4 @@ public partial class Dm_ManualDetails
     public int? CanExport { get; set; }
 
     public string? Comments { get; set; } = null!;
-
-    public List<int>? VesselIdList { get; set; }
-
-    public List<string>? VesselRankList { get; set; }
 }

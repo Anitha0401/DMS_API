@@ -1,4 +1,6 @@
-﻿namespace DMS.Data.EF.DTO;
+﻿using DMS.Data.EF.DTO;
+
+namespace DMS.Data.EF.x;
 
 public class EditManualVersionDto : BaseDto
 {

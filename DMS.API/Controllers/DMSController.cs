@@ -70,9 +70,26 @@ namespace DMS.API.Controllers
             return Ok(vslRankList);
         }
 
+        [HttpGet("GetHQUserList")]
+        public async Task<ActionResult<HQUserListDto>> GetHQUserList()
+        {
+            _logger.LogInformation("Get HQ User List");
+
+            var hqUsertList = await _service.GetHQUserList();
+
+            return Ok(hqUsertList);
+        }
 
         [HttpGet("GetManualById/{dm_ManualID}")]
         public async Task<ActionResult<Dm_ManualDetails>> GetManualDetails(long dm_ManualID) // Mark method as async
+        {
+            var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
+
+            return Ok(manualList);
+        }
+
+        [HttpGet("GetManualRightsById/{dm_ManualID}")]
+        public async Task<ActionResult<Dm_ManualDetails>> GetManualRights(long dm_ManualID) // Mark method as async
         {
             var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
 
@@ -98,16 +115,6 @@ namespace DMS.API.Controllers
             return Ok(dm_ManualID);
         }
 
-        [HttpPost("AddManualVersion")]
-        public async Task<ActionResult> AddManualVersion(CreateManualVersionDto manual) // Mark method as async
-        {
-            // Validation
-
-            var dm_ManualVersionID = await _service.AddDmManualVersionAsync(manual); // Await the async method
-
-            return Ok(dm_ManualVersionID);
-        }
-
         [HttpPost("EditManual")]
         public async Task<ActionResult> EditManual(EditManualDto manual) // Mark method as async
         {
@@ -116,16 +123,6 @@ namespace DMS.API.Controllers
             await _service.UpdateDmManualAsync(manual); // Await the async method
 
             return Ok();
-        }
-
-        [HttpPost("EditManualVersion")]
-        public async Task<ActionResult> EditManualVersion(CreateManualVersionDto manual) // Mark method as async
-        {
-            // Validation
-            // Edit need to apply logi
-            var dm_ManualVersionID = await _service.AddDmManualVersionAsync(manual); // Await the async method
-
-            return Ok(dm_ManualVersionID);
         }
 
         [HttpPost("ApproveManual")]

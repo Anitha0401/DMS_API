@@ -4,7 +4,7 @@ using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
 using MediatR;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.x
 {
     public class EditManualVersionCommandHandler : IRequestHandler<EditManualVersionCommand, bool>
     {

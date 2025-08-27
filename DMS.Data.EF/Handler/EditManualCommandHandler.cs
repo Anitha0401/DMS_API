@@ -39,6 +39,10 @@ namespace DMS.Data.EF.Handler
             {
                 throw new ArgumentNullException(nameof(dmManualVersion), "Manual version not exists");
             }
+            if (request.Manual.CalledMode.ToUpper() == "Publish".ToUpper())
+            {
+                dmManual.DM_StatusID =  _dmsContext.Dm_Status.FirstOrDefault(x => x.StatusName == "To Review")?.DM_StatusID ?? -1;
+            }
 
             if (dmManual.DM_CategoryID != request.Manual.DM_CategoryID)
             {
@@ -74,49 +78,44 @@ namespace DMS.Data.EF.Handler
                         "Manual name changed from " + dmManual.ManualName + " to " + request.Manual.ManualName + Environment.NewLine;
             }
 
+            bool isContentChanged = false;
             if (dmManualVersion.TextContents != request.Manual.TextContents)
             {
                 dmManualVersion.TextContents = request.Manual.TextContents;
 
-                remarks = remarks +
+                    isContentChanged = true;
+                    remarks = remarks +
                         "Manual content changed from " + dmManualVersion.TextContents + " to " + request.Manual.TextContents + Environment.NewLine;
+            }
+
+            if (isContentChanged)
+            {
+                var currentVersion = string.IsNullOrEmpty(dmManualVersion.Version) ? "" : dmManualVersion.Version;
+                string[] parts = currentVersion.Split('.', StringSplitOptions.RemoveEmptyEntries);
+                int major = int.Parse(parts[0]);
+                int minor = int.Parse(parts[1]);
+
+                // Next minor version
+                string nextMinor = $"{major}.{minor + 1}";
+
+                // Next major version
+                string nextVersion = $"{major + 1}.0";
+
+                dmManualVersion.Version = nextVersion;
+                remarks = remarks +
+                    "Manual version changed from " + currentVersion + " to " + nextVersion + Environment.NewLine;
             }
 
             if (remarks.Trim().Length > 0)
             {
-                _dmsContext.DmManuals.Update(dmManual);
-                _dmsContext.DmManualVersion.Update(dmManualVersion);
-                //await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
-            }
+            dmManual.ModifiedBy = request.Manual.UserID;
+            dmManual.ModifiedDate = DateTime.UtcNow;
 
-            //Vessel and Roles to Ack
-            var nextDM_Manual_RolesToAckID = (_dmsContext.DmManualRolesToAck
-                                 .Select(m => (long?)m.DM_Manual_RolesToAckID)
-                                 .Max() ?? 0);
+            _dmsContext.DmManuals.Update(dmManual);
+            _dmsContext.DmManualVersion.Update(dmManualVersion);
 
-            if (request.Manual.VesselIdList != null && request.Manual.VesselRankList != null)
-            {
-                foreach (int vesslID in request.Manual.VesselIdList)
-                {
-                    foreach (string vslRank in request.Manual.VesselRankList)
-                    {
-                        bool exists = _dmsContext.DmManualRolesToAck.Any(u => u.VesselID == vesslID && u.UserRank == vslRank);
-
-                        if (!exists)
-                        {
-                            nextDM_Manual_RolesToAckID = nextDM_Manual_RolesToAckID + 1;
-
-                            var roleToAck = new DM_Manual_RolesToAck();
-                            roleToAck.DM_Manual_RolesToAckID = nextDM_Manual_RolesToAckID;
-                            roleToAck.Origin = "HQ";
-                            roleToAck.DM_ManualID = request.Manual.DM_ManualID;
-                            roleToAck.VesselID = vesslID;
-                            roleToAck.UserRank = vslRank;
-                            roleToAck.IsActive = 1;
-                            _dmsContext.DmManualRolesToAck.Add(roleToAck);
-                        }
-                    }
-                }
+            // Add Log
+                await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
             }
 
             await _dmsContext.SaveChangesAsync(cancellationToken);

@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
 
 namespace DMS.Data.EF.Mapping;
 
@@ -12,8 +12,7 @@ internal class DM_ManualMapping : Profile
         CreateMap<CreateManualDto, DM_Manual>()
         .ForMember(d => d.ManualCode, opt => opt.MapFrom(src => src.ManualCode))
         .ForMember(d => d.ManualName, opt => opt.MapFrom(src => src.ManualName))
-        .ForMember(d => d.DM_CategoryID, opt => opt.MapFrom(src => src.DM_CategoryID))
-        .ForMember(d => d.CreatedBy, opt => opt.MapFrom(src => src.CreatedBy));
+        .ForMember(d => d.DM_CategoryID, opt => opt.MapFrom(src => src.DM_CategoryID));
 
         CreateMap<CreateManualDto, DM_ManualVersion>()
         .ForMember(d => d.TextContents, opt => opt.MapFrom(src => src.TextContents))

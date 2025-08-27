@@ -1,4 +1,4 @@
-﻿namespace DMS.Data.EF.Query;
+﻿namespace DMS.Data.EF.DTO;
 
 public class CreateManualDto
 {
@@ -17,8 +17,4 @@ public class CreateManualDto
     public string? CreatedBy { get; set; }
 
     public string CalledMode { get; set; } = string.Empty;
-
-    public List<int>? VesselIDList { get; set; }
-
-    public List<string>? VslRankList { get; set; }
 }

@@ -18,19 +18,21 @@ public interface IDMSService
 
     public Task<List<VslRankListDto>> GetVslRankList();
 
+    public Task<List<HQUserListDto>> GetHQUserList();
+
     public Task<List<DM_Manual_Attachments>> GetManualAttachmentListAsync(long dm_ManualID);
 
     public Task<List<Dm_ManualVersion_View>> GetDmManualsAsync();
 
     public Task<Dm_ManualDetails> GetDmManualDetailsAsync(long dm_ManualID);
 
-    public Task<long> AddDmManualAsync(CreateManualDto request);
+    public Task<Dm_ManualRights> GetDmManualRightsAsync(long dm_ManualID);
 
-    public Task<long> AddDmManualVersionAsync(CreateManualVersionDto request);
-
-    public Task<bool> ApproveManualAsync(ApproveManualDto request);
+    public Task<CreateManualResultDto> AddDmManualAsync(CreateManualDto request);
 
     public Task<bool> UpdateDmManualAsync(EditManualDto request);
+    
+    public Task<bool> ApproveManualAsync(ApproveManualDto request);
 
     public Task DeleteDmManualAsync(long dm_ManualID);
 

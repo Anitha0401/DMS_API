@@ -1,4 +1,4 @@
-﻿namespace DMS.Data.EF.Query;
+﻿namespace DMS.Data.EF.DTO;
 
 public class CreateManualVersionDto
 {

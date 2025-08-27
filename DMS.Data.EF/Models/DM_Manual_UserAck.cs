@@ -13,7 +13,7 @@ public partial class DM_Manual_UserAck
 
     public long DM_ManualID { get; set; }
 
-    public string Version { get; set; }
+    public string? Version { get; set; }
 
     public string? UserRank { get; set; }
 

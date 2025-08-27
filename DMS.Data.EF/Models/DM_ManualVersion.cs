@@ -13,7 +13,7 @@ public partial class DM_ManualVersion
 
     public int VesselID { get; set; }
 
-    public string Version { get; set; }
+    public string? Version { get; set; }
 
     public string? TextContents { get; set; } = null!;
 
