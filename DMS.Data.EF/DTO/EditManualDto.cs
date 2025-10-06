@@ -8,9 +8,17 @@ public class EditManualDto : BaseDto
 
     public string TextContents { get; set; } = string.Empty;
 
+    public int? IsMainTitle {  get; set; } = 0;
+    
+    public int? IsAcknowledgementRequired {  get; set; } = 0;
+
+    public int CanExport { get; set; } = 0;
+
+    public int IsApprovalRequired { get; set; } = 0;
+
+    public int? Approval_FlowID { get; set; } = 0;
+
     public string CalledMode { get; set; } = string.Empty;
 
-    public List<int>? VesselIdList { get; set; }
-
-    public List<string>? VesselRankList { get; set; }
+    public bool IsToPublish { get; set; } = false;
 }

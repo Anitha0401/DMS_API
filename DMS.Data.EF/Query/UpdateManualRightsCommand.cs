@@ -5,9 +5,9 @@ namespace DMS.Data.EF.Query
 {
     public class UpdateManualRightsCommand : IRequest<bool>
     {
-        public UpdateManualRightsDto Manual { get; set; }
+        public ManualRightsDto Manual { get; set; }
 
-        public UpdateManualRightsCommand(UpdateManualRightsDto manualDto)
+        public UpdateManualRightsCommand(ManualRightsDto manualDto)
         {
             Manual = manualDto;
         }

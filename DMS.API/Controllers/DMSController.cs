@@ -22,24 +22,105 @@ namespace DMS.API.Controllers
             _logger = logger;
         }
 
+        // Main Page - treeview
         [HttpGet("GetTreeViewManualList")]
-        public async Task<ActionResult<List<Manual_TreeviewDto>>> GetTreeViewManualList()
+        public async Task<ActionResult<List<Manual_TreeviewDto>>> GetTreeViewManualList(string userId)
         {
             _logger.LogInformation("Get Treeview Manual list");
-            var manualList = await _service.GetTreeViewManualListAsync(); // Await the async method
+            var manualList = await _service.GetTreeViewManualListAsync(userId);
             
             return Ok(manualList);
         }
 
+        // Main Page - Right side manual content
         [HttpGet("GetManualContent")]
         public async Task<ActionResult<string?>> GetManualContent(long dm_ManualID, bool includeSubManuals)
         {
             _logger.LogInformation("Get Manual Content");
-            var manualContent = await _service.GetManualContent(dm_ManualID, includeSubManuals); // Await the async method
+            var manualContent = await _service.GetManualContent(dm_ManualID, includeSubManuals);
 
             return Ok(manualContent);
         }
 
+        // Used for edit and view manual
+        [HttpGet("GetManualDetailsByVersionId/{DM_ManualVersionID}")]
+        public async Task<ActionResult<ManualDetails>> GetEditManualDetailsByVersion(long DM_ManualVersionID)
+        {
+            var manualList = await _service.GetManualDetailsByVersionAsync(DM_ManualVersionID); 
+
+            return Ok(manualList);
+        }
+
+        // Main Page - User manual count
+        [HttpGet("GetUserManualCounts")]
+        public async Task<ActionResult<string?>> GetUserManualCounts(string userId)
+        {
+            _logger.LogInformation("Get User Manual count");
+            var manualContent = await _service.GetUserManualCountAsync(userId);
+
+            return Ok(manualContent);
+        }
+
+        // User specific Manual List
+        [HttpGet("GetUserManualListForCalledMode")]
+        public async Task<ActionResult<List<ManualDetails>>> GetManualListForCalledMode(string userID, string calledMode)
+        {
+            var manualList = await _service.GetManualListBasedOnCalledModeAsync(userID, calledMode);
+
+            return Ok(manualList);
+        }
+
+        // User Favouite Manual List
+        [HttpGet("GetUserFavouiteManualList")]
+        public async Task<ActionResult<List<ManualDetails>>> GetUserFavouiteManualList(string userID)
+        {
+            _logger.LogInformation("Get User Favouite Manual list");
+
+            var result = await _service.GetUserFavouiteManualListAsync(userID);
+
+            return Ok(result);
+        }
+
+        // Compare Version
+        [HttpGet("GetManualVersionList")]
+        public async Task<ActionResult<List<ManualVersionDetailsDto>>> GetManualVersionList(long dm_ManualID)
+        {
+            _logger.LogInformation("Get Compare Version List");
+            var versionList = await _service.GetManualVersionDetailsAsync(dm_ManualID);
+
+            return Ok(versionList);
+        }
+
+        // Compare Version - get manual basic details
+        [HttpGet("GetManualSimpleDetails/{dm_ManualID}")]
+        public async Task<ActionResult<Manual_SimpleDetails>> GetManualSimpleDetails(long dm_ManualID) 
+        {
+            var manualList = await _service.GetManualSimpleDetailsAsync(dm_ManualID); 
+
+            return Ok(manualList);
+        }
+
+        // Compare Version - both manual contents
+        [HttpGet("GetCompareVersion_Content")]
+        public async Task<ActionResult<CompareVersionDetailsDto>> GetCompareVersion_Content(long dm_ManualID, long compare_ManualVersionID)
+        {
+            _logger.LogInformation("Get Compare Version Manual Content");
+            var manualContent = await _service.GetCompareVersionDetailsAsync(dm_ManualID, compare_ManualVersionID);
+
+            return Ok(manualContent);
+        }
+
+        // Get manual attachment details
+        [HttpGet("GetManualAttachments")]
+        public async Task<ActionResult<List<DmManualAttachment>>> GetManualAttachments(long dm_ManualID)
+        {
+            _logger.LogInformation("Get Manual Attachments");
+            var manualAttachments = await _service.GetManualAttachmentListAsync(dm_ManualID); // Await the async method
+
+            return Ok(manualAttachments);
+        }
+
+        // Add/Edit - Category list
         [HttpGet("GetManualCategory")]
         public async Task<ActionResult<ManualCategoryDto>> GetManualCategory()
         {
@@ -50,69 +131,69 @@ namespace DMS.API.Controllers
             return Ok(manualCategory);
         }
 
-        [HttpGet("GetVesselList")]
-        public async Task<ActionResult<VesselListDto>> GetVesselList()
+        // Add/Edit - Approval Flow list
+        [HttpGet("GetApprovalFlowList")]
+        public async Task<ActionResult<ApprovalFlowListDto>> GetApprovalFlowList()
         {
-            _logger.LogInformation("Get Vessel List");
+            _logger.LogInformation("Get Approval Flow List");
 
-            var vesselList = await _service.GetVesselList();
+            var flowList = await _service.GetApprovalFlowList();
 
-            return Ok(vesselList);
+            return Ok(flowList);
         }
 
-        [HttpGet("GetVslRankList")]
-        public async Task<ActionResult<VslRankListDto>> GetVslRankList()
+        // Add/Edit - Approval Flow details
+        [HttpGet("GetApprovalDetailsForFlowID/{FlowID}")]
+        public async Task<ActionResult<ApprovalDetailsDto>> GetApprovalDetailsForFlowID(int flowID)
         {
-            _logger.LogInformation("Get Vessel Rank List");
+            _logger.LogInformation("Get Approval Flow Details");
 
-            var vslRankList = await _service.GetVslRankList();
+            var roleList = await _service.GetApprovalDetailsForFlowID(flowID);
 
-            return Ok(vslRankList);
+            return Ok(roleList);
         }
 
-        [HttpGet("GetHQUserList")]
-        public async Task<ActionResult<HQUserListDto>> GetHQUserList()
+        // Add/Edit - Manual Rights user list
+        [HttpGet("GetManualRightsUsersAsync")]
+        public async Task<ActionResult<AssignManualRightsDto>> GetManualRightsList()
         {
-            _logger.LogInformation("Get HQ User List");
+            _logger.LogInformation("Get Vessel and Rank List");
 
-            var hqUsertList = await _service.GetHQUserList();
+            var result = await _service.GetManualRightsUsersAsync();
 
-            return Ok(hqUsertList);
+            return Ok(result);
         }
 
-        [HttpGet("GetManualById/{dm_ManualID}")]
-        public async Task<ActionResult<Dm_ManualDetails>> GetManualDetails(long dm_ManualID) // Mark method as async
+        // Add/Edit - Selected Manual Rights user list
+        [HttpGet("GetSelectedManualRightsList/{DM_ManualID}")]
+        public async Task<ActionResult<AssignManualRightsDto>> GetSelectedManualRightsList(long dm_ManualID)
         {
-            var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
+            _logger.LogInformation("Get Manual assigned rights list");
 
-            return Ok(manualList);
+            var result = await _service.GetDmManualAssignedRightsAsync(dm_ManualID);
+
+            return Ok(result);
         }
 
-        [HttpGet("GetManualRightsById/{dm_ManualID}")]
-        public async Task<ActionResult<Dm_ManualDetails>> GetManualRights(long dm_ManualID) // Mark method as async
+        // Add/Edit - Selected Manual vessel ack list
+        [HttpGet("GetManualUserAckList/{DM_ManualID}")]
+        public async Task<ActionResult<List<ManualUserAckList>>> GetManualUserAckList(long dm_ManualID)
         {
-            var manualList = await _service.GetDmManualDetailsAsync(dm_ManualID); // Await the async method
+            _logger.LogInformation("Get Manual user ack list");
 
-            return Ok(manualList);
-        }
+            var result = await _service.GetManualUserAckListAsync(dm_ManualID);
 
-        [HttpGet("GetManualAttachments")]
-        public async Task<ActionResult<List<DM_Manual_Attachments>>> GetManualAttachments(long dm_ManualID)
-        {
-            _logger.LogInformation("Get Manual Attachments");
-            var manualAttachments = await _service.GetManualAttachmentListAsync(dm_ManualID); // Await the async method
-
-            return Ok(manualAttachments);
+            return Ok(result);
         }
 
         [HttpPost("AddManual")]
-        public async Task<ActionResult> AddManual(CreateManualDto manual) // Mark method as async
+        public async Task<ActionResult<CreateManualResultDto>> AddManual(CreateManualDto manual) // Mark method as async
         {
             // Validation
 
-            var dm_ManualID = await _service.AddDmManualAsync(manual); // Await the async method
+            var DM_ManualID = await _service.AddDmManualAsync(manual); // Await the async method
 
-            return Ok(dm_ManualID);
+            return Ok(DM_ManualID);
         }
 
         [HttpPost("EditManual")]
@@ -130,9 +211,9 @@ namespace DMS.API.Controllers
         {
             // Validation
 
-            var dm_ManualVersionID = await _service.ApproveManualAsync(request); // Await the async method
+            var DM_ManualVersionID = await _service.ApproveManualAsync(request, false); // Await the async method
 
-            return Ok(dm_ManualVersionID);
+            return Ok(DM_ManualVersionID);
         }
 
         [HttpPost("PublishManual")]
@@ -140,9 +221,9 @@ namespace DMS.API.Controllers
         {
             // Validation
 
-            var dm_ManualVersionID = await _service.ApproveManualAsync(request); // Await the async method
+            var DM_ManualVersionID = await _service.ApproveManualAsync(request, false); // Await the async method
 
-            return Ok(dm_ManualVersionID);
+            return Ok(DM_ManualVersionID);
         }
 
         [HttpPost("SendBackManual")]
@@ -150,12 +231,12 @@ namespace DMS.API.Controllers
         {
             // Validation
 
-            var dm_ManualVersionID = await _service.ApproveManualAsync(request); // Await the async method
+            var DM_ManualVersionID = await _service.ApproveManualAsync(request, true); // Await the async method
 
-            return Ok(dm_ManualVersionID);
+            return Ok(DM_ManualVersionID);
         }
 
-        [HttpDelete("DeleteManual/{dm_ManualID}")]
+        [HttpDelete("DeleteManual/{DM_ManualID}")]
         public async Task<ActionResult> DeleteManual(long dm_ManualID) // Mark method as async
         {
             // object
@@ -166,12 +247,34 @@ namespace DMS.API.Controllers
             return Ok();
         }
 
-        [HttpDelete("DeleteManualVersion/{dm_ManualID}")]
+        [HttpDelete("DeleteManualVersion/{DM_ManualID}")]
         public async Task<ActionResult> DeleteManualVersion(long dm_ManualID) // Mark method as async
         {
             // Validation
 
             await _service.DeleteDmManualVersionAsync(dm_ManualID); // Await the async method
+
+            return Ok();
+        }
+
+
+        // Edit Manual rights details
+        [HttpPost("UpdateManualRights")]
+        public async Task<ActionResult> UpdateManualRights(ManualRightsDto manual) // Mark method as async
+        {
+            // Validation
+
+            await _service.UpdateManualRights(manual); // Await the async method
+
+            return Ok();
+        }
+
+        [HttpPost("AddToFavourite")]
+        public ActionResult AddToFavourite(long dm_ManualID, string userID) // Mark method as async
+        {
+            // Validation
+
+            _service.AddToFavouriteAsync(dm_ManualID, userID); // Await the async method
 
             return Ok();
         }

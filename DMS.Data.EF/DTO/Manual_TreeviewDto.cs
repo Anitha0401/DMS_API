@@ -30,8 +30,15 @@ public class TreeviewDataDto
 
     public string? StatusString { get; set; }
 
+    public int? IsActive { get; set; }
+
+    public long DM_StatusID { get; set; }
+
     public long ParentID { get; set; }
 
     public int ManualLevel { get; set; }
 
+    public int IsFavourite { get; set; }
+
+    public int IsMainTitle { get; set; }
 }

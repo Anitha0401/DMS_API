@@ -19,7 +19,185 @@ public class GeneralQueries : IGeneralQueries
         _configuration = config ?? throw new ArgumentNullException("config");
     }
 
-    public async Task<List<Manual_TreeviewEntity>> GetDmManualTreeviewAsyncs()
+    public async Task<List<Manual_TreeviewEntity>> GetDmManualTreeviewAsync(string userID)
+    {
+        var result = await _dmsContext
+                            .DmManual_Treeview
+                            .FromSqlInterpolated($"EXEC GetTreeViewManualList @UserID = {userID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<Manual_TreeviewEntity>();
+    }
+
+    public async Task<List<ManualVersionDetailsDto>> GetDmManualVersionList(long dm_ManualID)
+    {
+        var result = await _dmsContext
+                            .DmManualVersionList
+                            .FromSqlInterpolated($"EXEC GetManualVersionList @DM_ManualID = {dm_ManualID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<ManualVersionDetailsDto>();
+    }
+
+    public async Task<List<ManualDetails>> GetUserActionManualList(string userID, string calledMode)
+    {
+        var result = await _dmsContext
+                            .DmManualList
+                            .FromSqlInterpolated($"EXEC GetUserActionManualList @UserID = {userID}, @CalledMode = {calledMode}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<ManualDetails>();
+    }
+
+    public async Task<UserManualCount> GetUserManualCount(string userID)
+    {
+        var result = await _dmsContext
+                            .UserManualCount
+                            .FromSqlInterpolated($"EXEC GetUserManual_CntDetails @UserID = {userID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        var userManualCnt = new UserManualCount();
+
+        if (result != null && result.Count > 0)
+        {
+            userManualCnt.NewCnt = (int?)result[0].NewCnt;
+            userManualCnt.AckCnt = (int?)result[0].AckCnt;
+            userManualCnt.ApprovalCnt = (int?)result[0].ApprovalCnt;
+            userManualCnt.ReviewCnt = (int?)result[0].ReviewCnt;
+            userManualCnt.FavouriteCnt = (int?)result[0].FavouriteCnt;
+        }
+
+        return userManualCnt;
+    }
+
+    public async Task<List<ManualUserAckList>> GetUserAckList(long dm_ManualID)
+    {
+        var result = await _dmsContext
+                            .UserAckLists
+                            .FromSqlInterpolated($"EXEC GetManualUserAckList @DM_ManualID = {dm_ManualID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<ManualUserAckList>();
+    }
+
+    public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
+    {
+        var dm_Manual_LogID = (_dmsContext.DmManualLogs
+                                .Select(m => (long?)m.DmManualLogId)
+                                .Max() ?? 0) + 1;
+
+        var manualLog = new DmManualLog
+        {
+            DmManualLogId = dm_Manual_LogID,
+            Origin = "HQ",
+            VesselID = -1,
+            DM_ManualID = dm_ManualID,
+            DM_ManualVersionID = dm_ManualVersionID,
+            Activity = activity,
+            Remarks = remarks,
+            UserName = "",
+            UserRank = "",
+            Logdate = DateTime.Now,
+        };
+
+        _dmsContext.DmManualLogs.Add(manualLog);
+        await _dmsContext.SaveChangesAsync();
+    }
+
+    public async Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals)
+    {
+        var result = await _dmsContext.DmManualContent
+                                .FromSqlInterpolated($"EXEC GetManualAndSubManualContent @DM_ManualID = {dm_ManualID}, @IncludeSubManuals = {includeSubManuals}")
+                                .AsNoTracking()
+                                .ToListAsync();
+
+        var content = result.Count > 0 ? result[0]?.ManualContent : "";
+
+        return content;
+    }
+
+    public async Task<List<VesselListDto>> GetVesselList()
+    {
+        var vesselList = await _dmsContext.VVessels
+                                      .Select(x => new VesselListDto
+                                      {
+                                          VesselID = x.VesselID,
+                                          VslName = x.VslName,
+                                          VslCode = x.VslCode,
+                                          VslType = x.VslType
+                                      }).ToListAsync();
+        return vesselList;
+    }
+
+    public async Task<List<VslRankListDto>> GetVslRankList()
+    {
+        var vslRankList = await _dmsContext.VslStaffs
+            .Select(x => new VslRankListDto
+            {
+                userRank = x.UserRank,
+                userDept = x.UserDept ?? string.Empty,
+                userDeptDisplay = x.UserDept != null
+                    ? (x.UserDept.ToLower() == "l" ? "Electrical" :
+                       x.UserDept.ToLower() == "e" ? "Engine" :
+                       x.UserDept.ToLower() == "d" ? "Deck" :
+                       x.UserDept)
+                    : string.Empty
+            })
+            .Distinct()
+            .ToListAsync();
+        return vslRankList;
+    }
+
+    public async Task<List<HQUserListDto>> GetHQUserList()
+    {
+        var hQUserLists = await _dmsContext.HqUsers
+                                     .Select(x => new HQUserListDto
+                                     {
+                                         HQ_UsersID = x.HqUsersId,
+                                         UserName = x.UserName,
+                                         UserRole = x.Role,
+                                         HQDept = x.HQDept
+                                     }).ToListAsync();
+        return hQUserLists;
+    }
+
+    public async Task<List<ApprovalDetailsDto>> GetApprovalFlowDetails(int flowID)
+    {
+        var result = await _dmsContext
+                            .approvalFlowDetails
+                            .FromSqlInterpolated($"EXEC GetApprovalFlowDetails @FlowID = {flowID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<ApprovalDetailsDto>();
+    }
+
+    public async Task<long> GetNextApprovalStatusID(int approval_FlowID, long current_DM_StatusID)
+    {
+        var nextDM_StatusID = await _dmsContext.DmApprovalAndMailSetups
+                                        .Where(af => af.FlowId == approval_FlowID && af.DmStatusId == current_DM_StatusID)
+                                        .Select(af => (long?)af.NextDmStatusId)
+                                        .FirstOrDefaultAsync();
+
+        return nextDM_StatusID ?? current_DM_StatusID;
+    }
+
+    public async Task<long> GetSendBackApprovalStatusID(int approval_FlowID, long current_DM_StatusID)
+    {
+        var nextDM_StatusID = await _dmsContext.DmApprovalAndMailSetups
+                                        .Where(af => af.FlowId == approval_FlowID && af.DmStatusId == current_DM_StatusID)
+                                        .Select(af => (long?)af.SendBackDmStatusId)
+                                        .FirstOrDefaultAsync();
+
+        return nextDM_StatusID ?? current_DM_StatusID;
+    }
+
+    public async Task<List<Manual_TreeviewEntity>> xxGetDmManualTreeviewAsyncs()
     {
         var result = new List<Manual_TreeviewEntity>();
 
@@ -54,54 +232,7 @@ public class GeneralQueries : IGeneralQueries
         return result;
     }
 
-    public async Task<List<Manual_TreeviewEntity>> GetDmManualTreeviewAsync()
-    {
-        var result = await _dmsContext
-            .DmManual_Treeview
-            .FromSqlInterpolated($"EXEC GetTreeViewManualList")
-            .AsNoTracking()
-            .ToListAsync();
-
-        return result ?? new List<Manual_TreeviewEntity>();
-    }
-
-    public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
-    {
-        var dm_Manual_LogID = (_dmsContext.DmManualLogs
-                                .Select(m => (long?)m.DM_Manual_LogID)
-                                .Max() ?? 0) + 1;
-
-        var manualLog = new DM_Manual_Log
-        {
-            DM_Manual_LogID = dm_Manual_LogID,
-            Origin = "HQ",
-            VesselID = -1,
-            DM_ManualID = dm_ManualID,
-            DM_ManualVersionID = dm_ManualVersionID,
-            Activity = activity,
-            Remarks = remarks,
-            UserName = "",
-            UserRank = "",
-            Logdate = DateTime.Now,
-        };
-
-        _dmsContext.DmManualLogs.Add(manualLog);
-        await _dmsContext.SaveChangesAsync();
-    }
-
-    public async Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals)
-    {
-        var result = await _dmsContext.DmManualContent
-                                .FromSqlInterpolated($"EXEC GetManualAndSubManualContent @DM_ManualID = {dm_ManualID}, @IncludeSubManuals = {includeSubManuals}")
-                                .AsNoTracking()
-                                .ToListAsync();
-
-        var content = result.Count > 0 ? result[0]?.ManualContent : "";
-
-        return content;
-    }
-
-    public async Task<string?> GetDmManualContent_ScalarAsync(long dm_ManualID)
+    public async Task<string?> xxGetDmManualContent_ScalarAsync(long DM_ManualID)
     {
         var connection = _dmsContext.Database.GetDbConnection();
 
@@ -112,7 +243,7 @@ public class GeneralQueries : IGeneralQueries
 
             var rootParam = command.CreateParameter();
             rootParam.ParameterName = "@DM_ManualID";
-            rootParam.Value = dm_ManualID;
+            rootParam.Value = DM_ManualID;
             command.Parameters.Add(rootParam);
 
             if (connection.State == System.Data.ConnectionState.Closed)
@@ -122,9 +253,11 @@ public class GeneralQueries : IGeneralQueries
             return result?.ToString();
         }
     }
-    
-    public async Task<bool> CheckDmManualAsync(int manualID)
+
+    public async Task<bool> xxCheckDmManualAsync(int manualID)
     {
         return await _dmsContext.DmManuals.AnyAsync(e => e.DM_ManualID == manualID);
     }
+
+
 }

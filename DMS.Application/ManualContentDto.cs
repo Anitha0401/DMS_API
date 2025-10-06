@@ -6,7 +6,7 @@
 
         public string ManualCode { get; set; } = string.Empty;
         
-        public string ManualName { get; set; } = string.Empty;
+        public string? ManualName { get; set; } = string.Empty;
         
         public string ManualNo { get; set; } = string.Empty;
         

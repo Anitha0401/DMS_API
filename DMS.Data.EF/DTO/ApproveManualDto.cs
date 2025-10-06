@@ -2,5 +2,4 @@
 
 public class ApproveManualDto : BaseDto
 {
-    public string CalledMode { get; set; } = string.Empty;
 }

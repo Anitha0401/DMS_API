@@ -7,9 +7,12 @@ namespace DMS.Data.EF.Query
     {
         public ApproveManualDto Manual { get; set; }
 
-        public ApproveManualCommand(ApproveManualDto manualDto)
+        public bool isToSendBack { get; set; }
+
+        public ApproveManualCommand(ApproveManualDto manualDto, bool _isToSendBack)
         {
             Manual = manualDto;
+            this.isToSendBack = _isToSendBack;
         }
     }
 }

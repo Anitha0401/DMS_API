@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Text;
 using DMS.Data.EF.Models;
 using DMS.API.Model;
+using DMS.Application.Interface;
 
 namespace DMS.API.Controllers
 {
@@ -13,10 +14,19 @@ namespace DMS.API.Controllers
     [ApiController]
     public class LoginController : ControllerBase
     {
+        private readonly ILoginService _service;
         private readonly IConfiguration _configuration;
-        public LoginController(IConfiguration configuration)
+        public LoginController(IConfiguration configuration, ILoginService service)
         {
             _configuration = configuration; 
+            _service = service;
+        }
+        
+        [HttpGet("dbinfo")]
+        public IActionResult GetDbInfo()
+        {
+            var (server, database) = _service.GetDbInfo();
+            return Ok(new { server, database });
         }
 
         [HttpPost]

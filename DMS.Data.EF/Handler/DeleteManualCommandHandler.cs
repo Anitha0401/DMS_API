@@ -34,7 +34,7 @@ namespace DMS.Data.EF.Handler
             _dmsContext.DmManuals.Update(dmManual);
 
             // Optionally, can also delete related versions & attachments
-            var manualVersions = _dmsContext.DmManualVersion
+            var manualVersions = _dmsContext.DmManualVersions
                                     .Where(v => v.DM_ManualID == request.Manual.DM_ManualID)
                                     .ToList();
             if (manualVersions.Any())
@@ -43,7 +43,7 @@ namespace DMS.Data.EF.Handler
                 {
                     version.IsActive = 0;
                 }
-                _dmsContext.DmManualVersion.UpdateRange(manualVersions);
+                _dmsContext.DmManualVersions.UpdateRange(manualVersions);
             }
 
             var attachments = _dmsContext.DmManualAttachments

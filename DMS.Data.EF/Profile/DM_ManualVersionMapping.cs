@@ -4,12 +4,12 @@ using DMS.Data.EF.Models;
 
 namespace DMS.Data.EF.Mapping;
 
-internal class DM_ManualVersionMapping : Profile
+internal class DmManualVersionMapping : Profile
 {
-    public DM_ManualVersionMapping()
+    public DmManualVersionMapping()
     {
         // < From , To >
-        CreateMap<CreateManualVersionDto, DM_ManualVersion>()
+        CreateMap<CreateManualVersionDto, DmManualVersion>()
         .ForMember(d => d.TextContents, opt => opt.MapFrom(src => src.TextContents))
         .ForMember(d => d.Comments, opt => opt.MapFrom(src => src.Comments));
     }
