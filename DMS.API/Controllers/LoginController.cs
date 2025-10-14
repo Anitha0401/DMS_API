@@ -48,7 +48,7 @@ namespace DMS.API.Controllers
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier,user.UserName),
+                new Claim(ClaimTypes.NameIdentifier,user.UserId),
                 new Claim(ClaimTypes.Role,user.Role)
             };
             var token = new JwtSecurityToken(_configuration["Jwt:Issuer"],
@@ -65,8 +65,8 @@ namespace DMS.API.Controllers
         // Marking the AuthenticateUser method as static since it does not access instance data.
         private static UserModel? AuthenticateUser(UserLogin userLogin)
         {
-            var currentUser = UserConstants.Users.FirstOrDefault(x => x.UserName.ToLower() ==
-                userLogin.UserName.ToLower() && x.Password == userLogin.Password);
+            var currentUser = UserConstants.Users.FirstOrDefault(x => x.UserId.ToLower() ==
+                userLogin.UserId.ToLower() && x.Password == userLogin.Password);
 
             return currentUser;
         }

@@ -69,7 +69,7 @@ namespace DMS.Data.EF.Handler
             }
 
             if (dmManual.ManualName != request.Manual.ManualName)
-            {
+            {   
                 dmManual.ManualName = request.Manual.ManualName;
 
                 remarks = remarks +
@@ -136,7 +136,7 @@ namespace DMS.Data.EF.Handler
                     int minor = int.Parse(parts[1]);
 
                     // Next minor version
-                    string nextMinor = $"{major}.{minor + 1}";
+                    // string nextMinor = $"{major}.{minor + 1}";
 
                     // Next major version
                     string nextVersion = $"{major + 1}.0";

@@ -475,7 +475,7 @@ public class DMSService : IDMSService
                 userFavourite.DM_ManualID = dm_ManualID;
                 userFavourite.UserId = userID;
                 userFavourite.IsDisabled = 0;
-                _dbContext.DmManualUserFavourites.Add(userFavourite);
+                await _dbContext.DmManualUserFavourites.AddAsync(userFavourite);
 
                 await _dbContext.SaveChangesAsync();
             }

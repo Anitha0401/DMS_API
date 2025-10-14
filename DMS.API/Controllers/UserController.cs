@@ -31,7 +31,7 @@ namespace DMS.API.Controllers
                 var userClaims = identity.Claims;
                 return new UserModel
                 {
-                    UserName = userClaims.First(x => x.Type == ClaimTypes.NameIdentifier).Value,
+                    UserId = userClaims.First(x => x.Type == ClaimTypes.NameIdentifier).Value,
                     Role = userClaims.First(x => x.Type == ClaimTypes.Role).Value
                 };
             }
