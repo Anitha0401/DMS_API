@@ -51,16 +51,16 @@ public class GeneralQueries : IGeneralQueries
 
         return result ?? new List<ManualDetails>();
     }
-
-    public async Task<UserManualCount> GetUserManualCount(string userID)
+   
+    public async Task<ManualCount_User> GetUserManualCount(string userID)
     {
         var result = await _dmsContext
                             .UserManualCount
-                            .FromSqlInterpolated($"EXEC GetUserManual_CntDetails @UserID = {userID}")
+                            .FromSqlInterpolated($"EXEC GetManual_Cnt_User @UserID = {userID}")
                             .AsNoTracking()
                             .ToListAsync();
 
-        var userManualCnt = new UserManualCount();
+        var userManualCnt = new ManualCount_User();
 
         if (result != null && result.Count > 0)
         {
@@ -68,6 +68,31 @@ public class GeneralQueries : IGeneralQueries
             userManualCnt.AckCnt = (int?)result[0].AckCnt;
             userManualCnt.ApprovalCnt = (int?)result[0].ApprovalCnt;
             userManualCnt.ReviewCnt = (int?)result[0].ReviewCnt;
+            userManualCnt.FavouriteCnt = (int?)result[0].FavouriteCnt;
+        }
+
+        return userManualCnt;
+    }
+
+    public async Task<ManualCount_Dashboard> GetDashboardManualCounts(string userID)
+    {
+        var result = await _dmsContext
+                            .DashboardManualCount
+                            .FromSqlInterpolated($"EXEC GetManual_Cnt_Dashboard @UserID = {userID}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        var userManualCnt = new ManualCount_Dashboard();
+
+        if (result != null && result.Count > 0)
+        {
+            userManualCnt.NewCnt = (int?)result[0].NewCnt;
+            userManualCnt.ToAckCnt = (int?)result[0].ToAckCnt;
+            userManualCnt.ToApproveCnt = (int?)result[0].ToApproveCnt;
+            userManualCnt.ReleasedCnt = (int?)result[0].ReleasedCnt;
+            userManualCnt.UserToApproveCnt = (int?)result[0].UserToApproveCnt;
+            userManualCnt.UserToReviewCnt = (int?)result[0].UserToReviewCnt;
+            userManualCnt.UserToAckCnt = (int?)result[0].UserToAckCnt;
             userManualCnt.FavouriteCnt = (int?)result[0].FavouriteCnt;
         }
 
@@ -83,6 +108,18 @@ public class GeneralQueries : IGeneralQueries
                             .ToListAsync();
 
         return result ?? new List<ManualUserAckList>();
+    }
+
+    public async Task<List<VwManualNotification>> GetNotificationList()
+    {
+        var result = await _dmsContext
+                            .VwManualNotification
+                            .Where(x => x.CreatedDate >= DateTime.Now.AddDays(-30))
+                            .OrderByDescending(x => x.CreatedDate)
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<VwManualNotification>();
     }
 
     public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
@@ -107,6 +144,39 @@ public class GeneralQueries : IGeneralQueries
 
         _dmsContext.DmManualLogs.Add(manualLog);
         await _dmsContext.SaveChangesAsync();
+    }
+
+    public async Task AddNotification(long dm_ManualID, long dm_ManualVersionID, string userID, string notificationType, string notificationTitle, string description)
+    {
+        try
+        {
+            var nextDM_ManualNotificationID = _dmsContext.DM_ManualNotification
+                                              .Select(m => (long?)m.DM_ManualNotificationId)
+                                              .Max() ?? 0;
+
+            nextDM_ManualNotificationID = nextDM_ManualNotificationID + 1;
+
+            var manualNotification = new DM_ManualNotification();
+            manualNotification.DM_ManualNotificationId = nextDM_ManualNotificationID;
+            manualNotification.Origin = "HQ";
+            manualNotification.VesselID = -1;
+            manualNotification.Description = description;
+            manualNotification.NotificationType = notificationType;
+            manualNotification.NotificationTitle = notificationTitle;
+            manualNotification.DM_ManualID = dm_ManualID;
+            manualNotification.DM_ManualVersionID = dm_ManualVersionID;
+            manualNotification.UserID = userID;
+            manualNotification.IsRead = 0;
+            manualNotification.CreatedDate = DateTime.Now;
+            await _dmsContext.DM_ManualNotification.AddAsync(manualNotification);
+
+            await _dmsContext.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Log or rethrow for debugging
+            throw new Exception("Failed to add to notification", ex);
+        }
     }
 
     public async Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals)

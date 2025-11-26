@@ -30,6 +30,10 @@ public class TreeviewDataDto
 
     public string? StatusString { get; set; }
 
+    public string? Category { get; set; }
+
+    public string? LastUpdated { get; set; }
+
     public int? IsActive { get; set; }
 
     public long DM_StatusID { get; set; }

@@ -10,10 +10,14 @@ public interface IGeneralQueries
     public Task<List<ManualVersionDetailsDto>> GetDmManualVersionList(long dm_ManualID);
 
     public Task<List<ManualDetails>> GetUserActionManualList(string userID, string calledMode);
-   
-    public Task<UserManualCount> GetUserManualCount(string userID);
+
+    public Task<List<VwManualNotification>> GetNotificationList();
+
+    public Task<ManualCount_User> GetUserManualCount(string userID);
 
     public Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks);
+
+    public Task AddNotification(long dm_ManualID, long dm_ManualVersionID, string userID, string notificationType, string notificationTitle, string description);
 
     public Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals);
 

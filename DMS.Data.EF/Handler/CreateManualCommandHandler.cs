@@ -1,8 +1,10 @@
 ﻿using AutoMapper;
+using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
+using DMS.Data.EF.Constant;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -88,8 +90,9 @@ namespace DMS.Data.EF.Handler
                                             .Select(m => m.Item.AddlSortOrder)
                                             .FirstOrDefault();
                 }
+                if (parentAddlSortOrder != null) parentAddlSortOrder = parentAddlSortOrder + " ";
                 subManual.Item.SortOrder = (subManual.ParsedSortOrder + 1).ToString().PadLeft(6, '0');
-                subManual.Item.AddlSortOrder = $"{parentAddlSortOrder} {subManual.Item.SortOrder}";
+                subManual.Item.AddlSortOrder = $"{parentAddlSortOrder}{subManual.Item.SortOrder}";
             }
             #endregion
 
@@ -158,11 +161,13 @@ namespace DMS.Data.EF.Handler
             dmManual.ModifiedDate = null;
             dmManual.IsDeleted = 0;
 
-            long nextDM_StatusID = DMStatusConstant.STATUS_DRAFT;
+            long nextDM_StatusID = DMStatusConstant.STATUS_DRAFT; string notificationType = ManualNotificationType.ADD, notificationTitle = "New Manual Added";
             string nextApproval_HQRole = "", nextApproval_HQDept = "";
             if (request.Manual.IsToPublish)
             {
                 nextDM_StatusID = DMStatusConstant.STATUS_RELEASE;
+                notificationType = ManualNotificationType.PUBLISH;
+                notificationTitle = "New Manual Published";
                 if (request.Manual.IsApprovalRequired == 1)
                 {
                     nextDM_StatusID = await _queries.GetNextApprovalStatusID(request.Manual.Approval_FlowID ?? -1, DMStatusConstant.STATUS_DRAFT);
@@ -183,6 +188,8 @@ namespace DMS.Data.EF.Handler
                             nextApproval_HQRole = nextApproval.UserRole ?? "";
                             nextApproval_HQDept = nextApproval.HQDept ?? "";
                         }
+                        notificationType = ManualNotificationType.APPROVE;
+                        notificationTitle = "New Manual Published and Moved to next approval";
                     }
                 }
             }
@@ -220,6 +227,8 @@ namespace DMS.Data.EF.Handler
                 remarks = remarks + Environment.NewLine + "Approval flow not required";
             }
             await _queries.AddToLog(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "New Manual Added", remarks);
+
+            await _queries.AddNotification(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "", notificationType, notificationTitle, "Manual: " + request.Manual.ManualName);
 
             return new CreateManualResultDto
             {

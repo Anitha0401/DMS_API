@@ -3,7 +3,7 @@
 namespace DMS.Data.EF.Models;
 
 [Keyless]
-public class UserManualCount
+public class ManualCount_User
 {
     public int? NewCnt { get; set; } = null!;
   

@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.DTO;
+﻿ using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,12 +21,13 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<ManualDetails> DmManualList { get; set; } = null!;
 
-    public virtual DbSet<UserManualCount> UserManualCount { get; set; } = null!;
+    public virtual DbSet<ManualCount_User> UserManualCount { get; set; } = null!;
+
+    public virtual DbSet<ManualCount_Dashboard> DashboardManualCount { get; set; } = null!;
 
     public virtual DbSet<ApprovalDetailsDto> approvalFlowDetails { get; set; } = null!;
 
     public virtual DbSet<ManualUserAckList> UserAckLists { get; set; } = null!;
-
 
     public virtual DbSet<DmApprovalAndMailSetup> DmApprovalAndMailSetups { get; set; }
 
@@ -52,6 +53,8 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<DmManualUserFavourite> DmManualUserFavourites { get; set; }
 
+    public virtual DbSet<DM_ManualNotification> DM_ManualNotification { get; set; }
+
     public virtual DbSet<DmSetting> DmSettings { get; set; }
 
     public virtual DbSet<DmStatus> DmStatuses { get; set; }
@@ -72,6 +75,8 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<VwDmManualVersion> VwDmManualVersions { get; set; }
 
+    public virtual DbSet<VwManualNotification> VwManualNotification { get; set; }
+    
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -179,6 +184,16 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.DM_ManualUserFavouriteID).ValueGeneratedNever();
         });
 
+        modelBuilder.Entity<DM_ManualNotification>(entity =>
+        {
+            entity.HasKey(e => e.DM_ManualNotificationId).HasName("PK_DM_ManualNotification");
+
+            entity.Property(e => e.DM_ManualNotificationId).ValueGeneratedNever();
+            entity.Property(e => e.Comments).HasDefaultValue("");
+            entity.Property(e => e.CreatedDate).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.IsRead).HasDefaultValue(0);
+        });
+
         modelBuilder.Entity<DmSetting>(entity =>
         {
             entity.Property(e => e.DmSettingsId).ValueGeneratedNever();
@@ -246,6 +261,12 @@ public partial class DmsContext : DbContext
             entity.ToView("VW_DM_ManualVersions");
         });
 
+        modelBuilder.Entity<VwManualNotification>(entity =>
+        {
+            entity.ToView("VwManualNotification");
+        });
+
+
         modelBuilder.Entity<Manual_TreeviewDto>(eb =>
         {
             eb.HasNoKey();
@@ -264,7 +285,7 @@ public partial class DmsContext : DbContext
             eb.ToView(null);
         });
 
-        modelBuilder.Entity<UserManualCount>(eb =>
+        modelBuilder.Entity<ManualCount_User>(eb =>
         {
             eb.HasNoKey();
             eb.ToView(null);

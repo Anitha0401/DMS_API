@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
@@ -67,15 +68,24 @@ namespace DMS.Data.EF.Handler
             // Get the next approval step for the current approval flow and status
             string nextApproval_HQRole = "", nextApproval_HQDept = "";
             long nextDM_StatusID = -1;
+            string notificationType = ManualNotificationType.APPROVE, notificationTitle = "Manual approved";
 
             if (request.isToSendBack)
             {
                 nextDM_StatusID = await _queries.GetSendBackApprovalStatusID(dmManual.Approval_FlowID ?? -1, dmManual.DmStatusId);
+                notificationTitle = "Manual sendback for edit";
             }
             else
             { 
                 nextDM_StatusID = await _queries.GetNextApprovalStatusID(dmManual.Approval_FlowID ?? -1, dmManual.DmStatusId);
             }
+
+            if (nextDM_StatusID == DMStatusConstant.STATUS_RELEASE)
+            {
+                notificationType = ManualNotificationType.PUBLISH;
+                notificationTitle = "Manual approved and Released";
+            }
+
             if (nextDM_StatusID != DMStatusConstant.STATUS_RELEASE)
             {
                 var nextApproval = await (
@@ -91,6 +101,7 @@ namespace DMS.Data.EF.Handler
                 {
                     nextApproval_HQRole = nextApproval.UserRole ?? "";
                     nextApproval_HQDept = nextApproval.HQDept ?? "";
+                    notificationTitle = "Manual approved and moved to next approval (" + nextApproval_HQRole + " - " + nextApproval_HQDept + ")";
                 }
             }
 
@@ -111,6 +122,8 @@ namespace DMS.Data.EF.Handler
             _dmsContext.DmManuals.Update(dmManual);
             _dmsContext.DmManualVersions.Update(dmManualVersion);
             await _dmsContext.SaveChangesAsync(cancellationToken);
+
+            await _queries.AddNotification(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "", notificationType, notificationTitle, "Manual: " + request.Manual.ManualName);
 
             return true;
         }

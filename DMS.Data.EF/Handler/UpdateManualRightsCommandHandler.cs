@@ -24,15 +24,39 @@ namespace DMS.Data.EF.Handler
             var DM_ManualID = request.Manual.DM_ManualID;
 
             //Vessel and Roles to Ack
+            var existingVslAcks = await _dmsContext.DmManualToAckVsls
+                                            .Where(x => x.DM_ManualID == DM_ManualID)
+                                            .ToListAsync(cancellationToken);
+
+            var vesselIdList = request.Manual.VesselIdList ?? new List<int>();
+            var vesselRankList = request.Manual.VesselRankList ?? new List<string>();
+
+            // Mark IsActive = 0 for items not in the new list
+            foreach (var ack in existingVslAcks)
+            {
+                if (!vesselIdList.Contains(ack.VesselID) || !vesselRankList.Contains(ack.UserRank))
+                {
+                    ack.IsActive = 0;
+                }
+            }
+
             var nextDM_Manual_ToAck_VslID = (_dmsContext.DmManualToAckVsls
                                  .Select(m => (long?)m.DmManualToAckVslId)
                                  .Max() ?? 0);
 
-            if (request.Manual.VesselIdList != null && request.Manual.VesselRankList != null)
+            foreach (int vesslID in vesselIdList)
             {
-                foreach (int vesslID in request.Manual.VesselIdList)
+                foreach (string vslRank in vesselRankList)
                 {
-                    foreach (string vslRank in request.Manual.VesselRankList)
+                    var existing = existingVslAcks.FirstOrDefault(x => x.VesselID == vesslID && x.UserRank == vslRank);
+                    if (existing != null)
+                    {
+                        if (existing.IsActive == 0)
+                        {
+                            existing.IsActive = 1;
+                        }
+                    }
+                    else
                     {
                         nextDM_Manual_ToAck_VslID = nextDM_Manual_ToAck_VslID + 1;
 
@@ -49,13 +73,34 @@ namespace DMS.Data.EF.Handler
             }
 
             //HQ user to Ack
+            var existingHqAcks = await _dmsContext.DmManualToAckHqs
+                                           .Where(x => x.DM_ManualID == DM_ManualID)
+                                           .ToListAsync(cancellationToken);
+
+            var hqUsersIdList = request.Manual.HQ_UsersIDList ?? new List<long>();
+
+            foreach (var ack in existingHqAcks)
+            {
+                if (!hqUsersIdList.Contains(ack.HqUsersId))
+                {
+                    ack.IsActive = 0;
+                }
+            }
+
             var nextDmManual_ToAck_HQID = (_dmsContext.DmManualToAckHqs
                                  .Select(m => (long?)m.DmManualToAckHqid)
                                  .Max() ?? 0);
-
-            if (request.Manual.HQ_UsersIDList != null)
+            foreach (int hqUserID in hqUsersIdList)
             {
-                foreach (int hqUserID in request.Manual.HQ_UsersIDList)
+                var existing = existingHqAcks.FirstOrDefault(x => x.HqUsersId == hqUserID);
+                if (existing != null)
+                {
+                    if (existing.IsActive == 0)
+                    {
+                        existing.IsActive = 1;
+                    }
+                }
+                else
                 {
                     nextDmManual_ToAck_HQID = nextDmManual_ToAck_HQID + 1;
 

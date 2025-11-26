@@ -1,6 +1,7 @@
 ﻿using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
+using System.Diagnostics.Contracts;
 
 namespace DMS.Application.Interface;
 
@@ -8,12 +9,16 @@ public interface IDMSService
 {
     public Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync(string userID);
 
+    public Task<List<Manual_FilterDto>> GetManualListBasedOnCalledModeAsync(string calledMode, string userID);
+    
     public Task<string?> GetManualContent(long dm_ManualID, bool includeSubManuals);
 
     public Task<List<ManualVersionDetailsDto>> GetManualVersionDetailsAsync(long dm_ManualID);
 
-    public Task<UserManualCount?> GetUserManualCountAsync(string userID);
+    public Task<ManualCount_User?> GetUserManualCountAsync(string userID);
 
+    public Task<ManualCount_Dashboard?> GetDashboardManualCountsAsync(string userID);
+    
     public Task<CompareVersionDetailsDto> GetCompareVersionDetailsAsync(long dm_ManualID, long manualVersionIDToCompare);
 
     public Task<List<ManualCategoryDto>> GetManualCategory();
@@ -28,7 +33,7 @@ public interface IDMSService
 
     public Task<Manual_SimpleDetails> GetManualSimpleDetailsAsync(long dm_ManualID);
 
-    public Task<List<ManualDetails>> GetManualListBasedOnCalledModeAsync(string userID, string calledMode);
+    public Task<List<ManualDetails>> GetUserManualListBasedOnCalledModeAsync(string userID, string calledMode);
    
     public Task<List<ManualDetails>> GetUserFavouiteManualListAsync(string userID);
 
@@ -38,6 +43,8 @@ public interface IDMSService
 
     public Task<List<ManualUserAckList>> GetManualUserAckListAsync(long dm_ManualID);
     
+    public Task<List<NotificationDto>> GetManualNotificationListAsync(int limit);
+
     public Task UpdateManualRights(ManualRightsDto request);
     
     public Task<CreateManualResultDto> AddDmManualAsync(CreateManualDto request);

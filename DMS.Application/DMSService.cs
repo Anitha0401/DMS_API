@@ -1,14 +1,16 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using AutoMapper;
+using Azure.Core;
 using DMS.Application.Interface;
+using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Query;
 using MediatR;
-using DMS.Data.EF.DTO;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Net.Sockets;
 using static System.Runtime.InteropServices.JavaScript.JSType;
-using System.Linq;
-using Azure.Core;
 
 namespace DMS.Application;
 
@@ -17,12 +19,14 @@ public class DMSService : IDMSService
     private readonly DmsContext _dbContext;
     private readonly IMediator _mediator;
     private readonly GeneralQueries _queries;
+    private readonly IMapper _mapper;
 
-    public DMSService(DmsContext context, IMediator mediator, GeneralQueries queries)
+    public DMSService(DmsContext context, IMediator mediator, GeneralQueries queries, IMapper mapper)
     {
         _dbContext = context;
         _mediator = mediator;
         _queries = queries;
+         _mapper = mapper;
     }
 
     public async Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync(string userID)
@@ -42,6 +46,8 @@ public class DMSService : IDMSService
                 DM_ManualVersionID = m.DM_ManualVersionID,
                 ManualVersion = m.Version,
                 StatusString = m.StatusString,
+                Category = m.CategoryName,
+                LastUpdated = m.LastUpdated,
                 ParentID = m.ParentID,
                 ManualLevel = m.ManualLevel,
                 DM_StatusID = m.DM_StatusID,
@@ -74,6 +80,37 @@ public class DMSService : IDMSService
         return root;
     }
 
+    public async Task<List<Manual_FilterDto>> GetManualListBasedOnCalledModeAsync(string calledMode, string userID)
+    {
+        var manualList = await _queries.GetDmManualTreeviewAsync(userID);
+
+        if (manualList == null || !manualList.Any())
+            throw new InvalidOperationException("No manuals found in the database.");
+
+        var result = manualList.Select(m => new Manual_FilterDto
+        {
+            Key = m.DM_ManualID,
+            Label = m.ManualNo + " - " + m.ManualName,
+            data = new TreeviewDataDto
+            {
+                DM_ManualID = m.DM_ManualID,
+                DM_ManualVersionID = m.DM_ManualVersionID,
+                ManualVersion = m.Version,
+                StatusString = m.StatusString,
+                Category = m.CategoryName,
+                LastUpdated = m.LastUpdated,
+                ParentID = m.ParentID,
+                ManualLevel = m.ManualLevel,
+                DM_StatusID = m.DM_StatusID,
+                IsActive = m.IsActive,
+                IsFavourite = m.IsFavourite,
+                IsMainTitle = m.IsMainTitle
+            }
+        }).ToList();
+
+        return result;
+    }
+
     public async Task<string?> GetManualContent(long dm_ManualID, bool includeSubManuals)
     {
         return await _queries.GetDmManualContentAsync(dm_ManualID, includeSubManuals);
@@ -83,10 +120,15 @@ public class DMSService : IDMSService
     {
         return await _queries.GetDmManualVersionList(dm_ManualID);
     }
-
-    public async Task<UserManualCount> GetUserManualCountAsync(string userID)
+    
+    public async Task<ManualCount_User?> GetUserManualCountAsync(string userID)
     {
         return await _queries.GetUserManualCount(userID);
+    }
+
+    public async Task<ManualCount_Dashboard?> GetDashboardManualCountsAsync(string userID)
+    {
+        return await _queries.GetDashboardManualCounts(userID);
     }
 
     public async Task<CompareVersionDetailsDto> GetCompareVersionDetailsAsync(long dm_ManualID, long manualVersionIDToCompare)
@@ -296,7 +338,7 @@ public class DMSService : IDMSService
         return latestVersions;
     }
 
-    public async Task<List<ManualDetails>> GetManualListBasedOnCalledModeAsync(string userID, string calledMode)
+    public async Task<List<ManualDetails>> GetUserManualListBasedOnCalledModeAsync(string userID, string calledMode)
     {
         var data = await _queries.GetUserActionManualList(userID, calledMode);
 
@@ -362,17 +404,17 @@ public class DMSService : IDMSService
                           {
                               DM_ManualID = manual.DM_ManualID,
                               VesselIdList = _dbContext.DmManualToAckVsls
-                                  .Where(r => r.DM_ManualID == manual.DM_ManualID)
+                                  .Where(r => r.DM_ManualID == manual.DM_ManualID && r.IsActive == 1)
                                   .Select(r => r.VesselID)
                                   .Distinct()
                                   .ToList(),
                               VesselRankList = _dbContext.DmManualToAckVsls
-                                  .Where(r => r.DM_ManualID == manual.DM_ManualID)
+                                  .Where(r => r.DM_ManualID == manual.DM_ManualID && r.IsActive == 1)
                                   .Select(r => r.UserRank)
                                   .Distinct()
                                   .ToList(),
                               HQ_UsersIDList = _dbContext.DmManualToAckHqs
-                                  .Where(r => r.DM_ManualID == manual.DM_ManualID)
+                                  .Where(r => r.DM_ManualID == manual.DM_ManualID && r.IsActive == 1)
                                   .Select(r => r.HqUsersId)
                                   .Distinct()
                                   .ToList(),
@@ -390,6 +432,17 @@ public class DMSService : IDMSService
 
         return data;
     }
+
+    public async Task<List<NotificationDto>> GetManualNotificationListAsync(int limit)
+    {
+        var data = await _queries.GetNotificationList();
+
+        var notificationList = _mapper.Map<List<NotificationDto>>(data);
+
+        return notificationList;
+    }
+
+
     public async Task UpdateManualRights(ManualRightsDto request)
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
@@ -442,6 +495,8 @@ public class DMSService : IDMSService
 
         manual.IsDeleted = 1;
         await _dbContext.SaveChangesAsync();
+
+        await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.DELETE, "Manual deleted", "");
     }
 
     public async Task DeleteDmManualVersionAsync(long dm_ManualID)
@@ -454,6 +509,8 @@ public class DMSService : IDMSService
 
         manualVersion.IsActive = 0;
         await _dbContext.SaveChangesAsync();
+
+        await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.DELETE, "Manual Version deleted", "");
     }
 
     public async Task AddToFavouriteAsync(long dm_ManualID, string userID)
@@ -478,6 +535,8 @@ public class DMSService : IDMSService
                 await _dbContext.DmManualUserFavourites.AddAsync(userFavourite);
 
                 await _dbContext.SaveChangesAsync();
+
+                await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.FAVOURITE, "Manual added as Favourite for user - " + userID, "");
             }
         }
         catch (Exception ex)

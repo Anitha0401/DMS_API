@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
@@ -166,10 +167,13 @@ namespace DMS.Data.EF.Handler
                         "Manual content changed from " + dmManualVersion.TextContents + " to " + request.Manual.TextContents + Environment.NewLine;
                 }
             }
-            
+
+            string notificationType = ManualNotificationType.EDIT, notificationTitle = "Manual details editted";
             if (request.Manual.IsToPublish)
             {
                 long nextDM_StatusID = DMStatusConstant.STATUS_RELEASE;
+                notificationType = ManualNotificationType.PUBLISH; notificationTitle = "Manual details editted and Released";
+
                 string nextApproval_HQRole = "", nextApproval_HQDept = "";
                 if (request.Manual.IsApprovalRequired == 1)
                 {
@@ -192,6 +196,7 @@ namespace DMS.Data.EF.Handler
                             nextApproval_HQDept = nextApproval.HQDept ?? "";
                         }
                     }
+                    notificationType = ManualNotificationType.APPROVE; notificationTitle = "Manual details editted and send to next approval";
                 }
 
                 dmManual.DmStatusId = nextDM_StatusID;
@@ -222,6 +227,8 @@ namespace DMS.Data.EF.Handler
 
                 // Add Log
                 await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
+
+                await _queries.AddNotification(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "", notificationType, notificationTitle, "Manual: " + request.Manual.ManualName);
             }
 
             await _dmsContext.SaveChangesAsync(cancellationToken);

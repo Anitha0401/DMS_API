@@ -23,6 +23,10 @@ public class Manual_TreeviewEntity
     
     public string? StatusString { get; set; }
 
+    public string? CategoryName { get; set; }
+
+    public string? LastUpdated { get; set; }
+
     public long ParentID { get; set; }
 
     public int ManualLevel { get; set; }

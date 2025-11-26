@@ -32,6 +32,16 @@ namespace DMS.API.Controllers
             return Ok(manualList);
         }
 
+        // Main Page - called mode
+        [HttpGet("GetManualListBasedOnCalledMode")]
+        public async Task<ActionResult<List<Manual_TreeviewDto>>> GetManualListBasedOnFilter(string calledMode, string userId)
+        {
+            _logger.LogInformation("Get Manual list based on calledMode");
+            var manualList = await _service.GetManualListBasedOnCalledModeAsync(calledMode, userId);
+
+            return Ok(manualList);
+        }
+
         // Main Page - Right side manual content
         [HttpGet("GetManualContent")]
         public async Task<ActionResult<string?>> GetManualContent(long dm_ManualID, bool includeSubManuals)
@@ -51,21 +61,32 @@ namespace DMS.API.Controllers
             return Ok(manualList);
         }
 
-        // Main Page - User manual count
+
+        // Dashboard - Manual count
+        [HttpGet("GetDashboardManualCounts")]
+        public async Task<ActionResult<ManualCount_Dashboard>> GetDashboardManualCounts(string userId)
+        {
+            _logger.LogInformation("Get Dashboard Manual count");
+            var manualCount = await _service.GetDashboardManualCountsAsync(userId);
+
+            return Ok(manualCount);
+        }
+
+        // Dashboard/Main Page - User manual count
         [HttpGet("GetUserManualCounts")]
-        public async Task<ActionResult<string?>> GetUserManualCounts(string userId)
+        public async Task<ActionResult<ManualCount_User>> GetUserManualCounts(string userId)
         {
             _logger.LogInformation("Get User Manual count");
-            var manualContent = await _service.GetUserManualCountAsync(userId);
+            var manualCount = await _service.GetUserManualCountAsync(userId);
 
-            return Ok(manualContent);
+            return Ok(manualCount);
         }
 
         // User specific Manual List
         [HttpGet("GetUserManualListForCalledMode")]
-        public async Task<ActionResult<List<ManualDetails>>> GetManualListForCalledMode(string userID, string calledMode)
+        public async Task<ActionResult<List<ManualDetails>>> GetUserManualListForCalledMode(string userID, string calledMode)
         {
-            var manualList = await _service.GetManualListBasedOnCalledModeAsync(userID, calledMode);
+            var manualList = await _service.GetUserManualListBasedOnCalledModeAsync(userID, calledMode);
 
             return Ok(manualList);
         }
@@ -276,6 +297,22 @@ namespace DMS.API.Controllers
 
             _service.AddToFavouriteAsync(dm_ManualID, userID); // Await the async method
 
+            return Ok();
+        }
+
+        // Get user notifications
+        [HttpGet("GetManualNotifications")]
+        public async Task<IActionResult> GetManualNotifications(int limit = 10)
+        {
+            var notifications = await _service.GetManualNotificationListAsync(limit);
+            return Ok(notifications);
+        }
+
+        // Mark notification as read
+        [HttpPost("MarkNotificationRead")]
+        public async Task<IActionResult> MarkNotificationRead(long notificationID)
+        {
+            // await _service.MarkAsRead(notificationID);
             return Ok();
         }
     }
