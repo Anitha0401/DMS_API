@@ -4,14 +4,14 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Manuals;
 
-[Table("DM_Manual_UserAck")]
-public partial class DmManualUserAck
+[Table("DM_Manual_Log")]
+public partial class DmManualLog
 {
     [Key]
-    [Column("DM_Manual_UserAckID")]
-    public long DmManualUserAckId { get; set; }
+    [Column("DM_Manual_LogID")]
+    public long DmManualLogId { get; set; }
 
     [StringLength(3)]
     [Unicode(false)]
@@ -26,27 +26,22 @@ public partial class DmManualUserAck
     [Column("DM_ManualVersionID")]
     public long DM_ManualVersionID { get; set; }
 
-    public int Version { get; set; }
+    [StringLength(120)]
+    [Unicode(false)]
+    public string Activity { get; set; } = null!;
 
-    [StringLength(50)]
+    [StringLength(3000)]
+    [Unicode(false)]
+    public string Remarks { get; set; } = null!;
+
+    [Column(TypeName = "datetime")]
+    public DateTime? Logdate { get; set; }
+
+    [StringLength(20)]
     [Unicode(false)]
     public string? UserRank { get; set; }
 
     [StringLength(250)]
     [Unicode(false)]
     public string? UserName { get; set; }
-
-    [Column("UserID")]
-    [StringLength(150)]
-    [Unicode(false)]
-    public string UserId { get; set; } = null!;
-
-    [Column(TypeName = "datetime")]
-    public DateTime? DateRead { get; set; }
-
-    [StringLength(500)]
-    [Unicode(false)]
-    public string? Comments { get; set; }
-
-    public int? IsActive { get; set; }
 }

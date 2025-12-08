@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Manuals;
 
 [Table("DM_Manual_ApprovalSettings")]
 public partial class DmManualApprovalSetting

@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Circulars;
 
-[Table("DM_Manual")]
-public partial class DmManual
+[Table("CIR_Master")]
+public partial class CIR_Master
 {
     [Key]
     [Column("DM_ManualID")]

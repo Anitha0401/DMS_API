@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Circulars;
 
 [Keyless]
-public partial class VwDmManualVersion
+public partial class VwCIRMasterBlob
 {
     [Column("DM_ManualID")]
     public long DM_ManualID { get; set; }

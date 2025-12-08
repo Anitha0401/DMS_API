@@ -5,6 +5,7 @@ using DMS.Application.Interface;
 using Microsoft.AspNetCore.Authorization;
 using DMS.Data.EF.Query;
 using DMS.Data.EF.DTO;
+using DMS.Data.EF.Models.Manuals;
 
 namespace DMS.API.Controllers
 {

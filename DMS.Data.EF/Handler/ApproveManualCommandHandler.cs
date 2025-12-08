@@ -3,6 +3,7 @@ using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
+using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Query;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -41,9 +42,7 @@ namespace DMS.Data.EF.Handler
 
             if (!request.isToSendBack)
             {
-                var user = _dmsContext.HqUsers
-                                .Where(x => x.UserId == request.Manual.UserID)
-                                .FirstOrDefault();
+                var user = await _queries.GetHQUser(request.Manual.UserID);
 
                 // Insert a new record into DmManualApprovedLists
                 var approvedListEntry = new DmManualApprovedList

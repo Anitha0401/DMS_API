@@ -1,5 +1,6 @@
 ﻿ using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
+using DMS.Data.EF.Models.Manuals;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;
@@ -55,23 +56,9 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<DM_ManualNotification> DM_ManualNotification { get; set; }
 
-    public virtual DbSet<DmSetting> DmSettings { get; set; }
+    public virtual DbSet<DmSettings> DmSettings { get; set; }
 
     public virtual DbSet<DmStatus> DmStatuses { get; set; }
-
-    public virtual DbSet<GenErrorHqLog> GenErrorHqLogs { get; set; }
-
-    public virtual DbSet<GenErrorVslLog> GenErrorVslLogs { get; set; }
-
-    public virtual DbSet<HqUser> HqUsers { get; set; }
-
-    public virtual DbSet<HqUserActionVsl> HqUserActionVsls { get; set; }
-
-    public virtual DbSet<HqUserRole> HqUserRoles { get; set; }
-
-    public virtual DbSet<VVessel> VVessels { get; set; }
-
-    public virtual DbSet<VslStaff> VslStaffs { get; set; }
 
     public virtual DbSet<VwDmManualVersion> VwDmManualVersions { get; set; }
 
@@ -194,7 +181,7 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.IsRead).HasDefaultValue(0);
         });
 
-        modelBuilder.Entity<DmSetting>(entity =>
+        modelBuilder.Entity<DmSettings>(entity =>
         {
             entity.Property(e => e.DmSettingsId).ValueGeneratedNever();
         });
@@ -209,61 +196,14 @@ public partial class DmsContext : DbContext
             entity.Property(e => e.StatusCode).HasDefaultValue("");
         });
 
-        modelBuilder.Entity<GenErrorHqLog>(entity =>
-        {
-            entity.Property(e => e.GenErrorHqLogId).ValueGeneratedNever();
-            entity.Property(e => e.AddedOn).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.ApplicationName).HasDefaultValue("");
-            entity.Property(e => e.FunctionName).HasDefaultValue("");
-            entity.Property(e => e.LoggedInUserId).HasDefaultValue("");
-            entity.Property(e => e.PageName).HasDefaultValue("");
-        });
-
-        modelBuilder.Entity<GenErrorVslLog>(entity =>
-        {
-            entity.Property(e => e.AddedOn).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.ApplicationName).HasDefaultValue("");
-            entity.Property(e => e.FunctionName).HasDefaultValue("");
-            entity.Property(e => e.LoggedInUserId).HasDefaultValue("");
-            entity.Property(e => e.PageName).HasDefaultValue("");
-        });
-
-        modelBuilder.Entity<HqUser>(entity =>
-        {
-            entity.Property(e => e.HqUsersId).ValueGeneratedNever();
-            entity.Property(e => e.Designation).HasDefaultValue("");
-            entity.Property(e => e.Email).HasDefaultValue("");
-            entity.Property(e => e.EmpId).HasDefaultValue("");
-            entity.Property(e => e.IsDisabled).HasDefaultValue(0);
-            entity.Property(e => e.PhoneNo).HasDefaultValue("");
-        });
-
-        modelBuilder.Entity<HqUserActionVsl>(entity =>
-        {
-            entity.Property(e => e.HqUserActionVslsId).ValueGeneratedNever();
-            entity.Property(e => e.IsActionVsls).HasDefaultValue(0);
-            entity.Property(e => e.IsPrimaryVsl).HasDefaultValue(0);
-            entity.Property(e => e.IsSecdonaryVsl).HasDefaultValue(0);
-        });
-
-        modelBuilder.Entity<HqUserRole>(entity =>
-        {
-            entity.Property(e => e.HqUserRolesId).ValueGeneratedNever();
-        });
-
-        modelBuilder.Entity<VVessel>(entity =>
-        {
-            entity.Property(e => e.VVesselId).ValueGeneratedNever();
-        });
-
         modelBuilder.Entity<VwDmManualVersion>(entity =>
         {
-            entity.ToView("VW_DM_ManualVersions");
+            entity.ToView("Vw_DM_ManualVersions");
         });
 
         modelBuilder.Entity<VwManualNotification>(entity =>
         {
-            entity.ToView("VwManualNotification");
+            entity.ToView("Vw_ManualNotification");
         });
 
 

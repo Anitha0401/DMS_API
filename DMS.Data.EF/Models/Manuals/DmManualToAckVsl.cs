@@ -4,24 +4,28 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Manuals;
 
-[Table("DM_ManualUserFavourite")]
-public partial class DmManualUserFavourite
+[Table("DM_Manual_ToAck_Vsl")]
+public partial class DmManualToAckVsl
 {
     [Key]
-    public long DM_ManualUserFavouriteID { get; set; }
+    [Column("DM_Manual_ToAck_VslID")]
+    public long DmManualToAckVslId { get; set; }
 
     [StringLength(3)]
     [Unicode(false)]
     public string Origin { get; set; } = null!;
 
+    [Column("VesselID")]
     public int VesselID { get; set; }
 
+    [Column("DM_ManualID")]
     public long DM_ManualID { get; set; }
 
     [StringLength(50)]
-    public string UserId { get; set; } = null!;
+    [Unicode(false)]
+    public string UserRank { get; set; } = null!;
 
-    public int? IsDisabled { get; set; }
+    public int? IsActive { get; set; }
 }

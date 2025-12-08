@@ -5,10 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.Circulars;
 
 [Keyless]
-public class VwManualNotification
+public class VwCIRNotification
 {
     public required long DM_ManualNotificationId { get; set; }
 

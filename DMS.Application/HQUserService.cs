@@ -10,15 +10,13 @@ namespace DMS.Application;
 
 public class HQUserService : IHQUserService
 {
-    private readonly DmsContext _dbContext;
+    private readonly GeneralContext _dbContext;
     private readonly IMediator _mediator;
-    private readonly GeneralQueries _queries;
 
-    public HQUserService(DmsContext context, IMediator mediator, GeneralQueries queries)
+    public HQUserService(GeneralContext context, IMediator mediator)
     {
         _dbContext = context;
         _mediator = mediator;
-        _queries = queries;
     }
 
     public async Task<List<string>> GetHQDeptList()

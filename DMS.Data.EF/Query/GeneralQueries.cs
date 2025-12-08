@@ -1,6 +1,9 @@
-﻿using DMS.Data.EF.Context;
+﻿using Azure.Core;
+using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
+using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.Manuals;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -11,11 +14,13 @@ namespace DMS.Data.EF.Query;
 public class GeneralQueries : IGeneralQueries
 {
     private readonly DmsContext _dmsContext;
+    private readonly GeneralContext _generalContext;
     private readonly IConfiguration _configuration;
 
-    public GeneralQueries(DmsContext dmsContext, IConfiguration config)
+    public GeneralQueries(DmsContext dmsContext, GeneralContext generalContext, IConfiguration config)
     {
         _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(_dmsContext));
+        _generalContext = generalContext ?? throw new ArgumentNullException(nameof(_generalContext));
         _configuration = config ?? throw new ArgumentNullException("config");
     }
 
@@ -23,7 +28,7 @@ public class GeneralQueries : IGeneralQueries
     {
         var result = await _dmsContext
                             .DmManual_Treeview
-                            .FromSqlInterpolated($"EXEC GetTreeViewManualList @UserID = {userID}")
+                            .FromSqlInterpolated($"EXEC GetManual_TreeViewList @UserID = {userID}")
                             .AsNoTracking()
                             .ToListAsync();
 
@@ -45,7 +50,7 @@ public class GeneralQueries : IGeneralQueries
     {
         var result = await _dmsContext
                             .DmManualList
-                            .FromSqlInterpolated($"EXEC GetUserActionManualList @UserID = {userID}, @CalledMode = {calledMode}")
+                            .FromSqlInterpolated($"EXEC GetManual_UserActionList @UserID = {userID}, @CalledMode = {calledMode}")
                             .AsNoTracking()
                             .ToListAsync();
 
@@ -193,7 +198,7 @@ public class GeneralQueries : IGeneralQueries
 
     public async Task<List<VesselListDto>> GetVesselList()
     {
-        var vesselList = await _dmsContext.VVessels
+        var vesselList = await _generalContext.VVessels
                                       .Select(x => new VesselListDto
                                       {
                                           VesselID = x.VesselID,
@@ -206,7 +211,7 @@ public class GeneralQueries : IGeneralQueries
 
     public async Task<List<VslRankListDto>> GetVslRankList()
     {
-        var vslRankList = await _dmsContext.VslStaffs
+        var vslRankList = await _generalContext.VslStaffs
             .Select(x => new VslRankListDto
             {
                 userRank = x.UserRank,
@@ -225,7 +230,7 @@ public class GeneralQueries : IGeneralQueries
 
     public async Task<List<HQUserListDto>> GetHQUserList()
     {
-        var hQUserLists = await _dmsContext.HqUsers
+        var hQUserLists = await _generalContext.HqUsers
                                      .Select(x => new HQUserListDto
                                      {
                                          HQ_UsersID = x.HqUsersId,
@@ -234,6 +239,14 @@ public class GeneralQueries : IGeneralQueries
                                          HQDept = x.HQDept
                                      }).ToListAsync();
         return hQUserLists;
+    }
+
+    public async Task<HqUser?> GetHQUser(string userID)
+    {
+        var user = await _generalContext.HqUsers
+                        .Where(x => x.UserId == userID)
+                        .FirstOrDefaultAsync();
+        return user;
     }
 
     public async Task<List<ApprovalDetailsDto>> GetApprovalFlowDetails(int flowID)
@@ -277,7 +290,7 @@ public class GeneralQueries : IGeneralQueries
 
         var connection = _dmsContext.Database.GetDbConnection();
         await using var command = connection.CreateCommand();
-        command.CommandText = "GetTreeViewManualList";
+        command.CommandText = "GetManual_TreeViewList";
         command.CommandType = CommandType.StoredProcedure;
 
         await connection.OpenAsync();

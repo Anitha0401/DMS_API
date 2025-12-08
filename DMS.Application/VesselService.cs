@@ -10,11 +10,11 @@ namespace DMS.Application;
 
 public class VesselService : IVesselService
 {
-    private readonly DmsContext _dbContext;
+    private readonly GeneralContext _dbContext;
     private readonly IMediator _mediator;
     private readonly GeneralQueries _queries;
 
-    public VesselService(DmsContext context, IMediator mediator, GeneralQueries queries)
+    public VesselService(GeneralContext context, IMediator mediator, GeneralQueries queries)
     {
         _dbContext = context;
         _mediator = mediator;

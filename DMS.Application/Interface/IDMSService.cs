@@ -1,5 +1,6 @@
 ﻿using DMS.Data.EF.DTO;
 using DMS.Data.EF.Models;
+using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Query;
 using System.Diagnostics.Contracts;
 
