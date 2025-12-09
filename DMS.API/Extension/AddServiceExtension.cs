@@ -1,16 +1,12 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using DMS.Data.EF;
+using DMS.Data.EF.Context;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Identity.Web;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using System.Net.Mime;
 using System.Reflection;
-using System.Text;
-
-using DMS.Data.EF;
-using DMS.Data.EF.Context;
-using Microsoft.Identity.Web;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 namespace DMS.API.Extension;
 
@@ -80,6 +76,12 @@ public static class AddServiceExtension
         }
 
         services.AddDbContext<DmsContext>(options =>
+            options.UseSqlServer(configValue));
+
+        services.AddDbContext<CircularsContext>(options =>
+            options.UseSqlServer(configValue));
+
+        services.AddDbContext<GeneralContext>(options =>
             options.UseSqlServer(configValue));
 
         DBConnectionString dBConnectionStringOption = new(configValue);

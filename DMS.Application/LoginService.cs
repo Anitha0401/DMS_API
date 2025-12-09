@@ -1,11 +1,10 @@
 ﻿using DMS.Application.Interface;
 using DMS.Data.EF.Context;
-using DMS.Data.EF.Query;
-using MediatR;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Application;
+
 public class LoginService : ILoginService
 {
     private readonly DmsContext _dbContext;

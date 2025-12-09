@@ -1,8 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
-using System.Transactions;
-
-namespace DMS.Data.EF;
+﻿namespace DMS.Data.EF;
 
 public class DBActions : IDBActions
 {

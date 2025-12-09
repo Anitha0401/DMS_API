@@ -1,16 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace DMS.Data.EF.Models.Circulars;
 
 [Keyless]
 public class VwCIRNotification
 {
-    public required long DM_ManualNotificationId { get; set; }
+    public required long CIR_NotificationID { get; set; }
 
     public string UserID { get; set; } = string.Empty;
 
@@ -24,11 +19,13 @@ public class VwCIRNotification
     
     public DateTime? CreatedDate { get; set; }
 
-    public required long DM_ManualID { get; set; }
+    public required long CIR_MasterID { get; set; }
 
-    public required long DM_ManualVersionID { get; set; }
+    public string Reference { get; set; } = string.Empty;
 
-    public string ManualName { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+
+    public string CIR_Number { get; set; } = string.Empty;
 
     public bool? IsRead { get; set; } = false;
 

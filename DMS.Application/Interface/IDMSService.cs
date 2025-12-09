@@ -1,8 +1,6 @@
-﻿using DMS.Data.EF.DTO;
-using DMS.Data.EF.Models;
+﻿using DMS.Data.EF.DTO.Manuals;
+using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
-using DMS.Data.EF.Query;
-using System.Diagnostics.Contracts;
 
 namespace DMS.Application.Interface;
 
@@ -24,9 +22,9 @@ public interface IDMSService
 
     public Task<List<ManualCategoryDto>> GetManualCategory();
 
-    public Task<List<ApprovalFlowListDto>> GetApprovalFlowList();
+    public Task<List<ManualApprovalFlowListDto>> GetApprovalFlowList();
 
-    public Task<List<ApprovalDetailsDto>> GetApprovalDetailsForFlowID(int flowID);
+    public Task<List<ManualApprovalRoleListDto>> GetApprovalDetailsForFlowID(int flowID);
 
     public Task<List<DmManualAttachment>> GetManualAttachmentListAsync(long dm_ManualID);
 
@@ -44,7 +42,7 @@ public interface IDMSService
 
     public Task<List<ManualUserAckList>> GetManualUserAckListAsync(long dm_ManualID);
     
-    public Task<List<NotificationDto>> GetManualNotificationListAsync(int limit);
+    public Task<List<ManualNotificationDto>> GetManualNotificationListAsync(int limit);
 
     public Task UpdateManualRights(ManualRightsDto request);
     
@@ -52,7 +50,7 @@ public interface IDMSService
 
     public Task<CreateManualResultDto> UpdateDmManualAsync(EditManualDto request);
     
-    public Task<bool> ApproveManualAsync(ApproveManualDto request, bool isToSendBack);
+    public Task<bool> ApproveManualAsync(ManualApproveDto request, bool isToSendBack);
 
     public Task DeleteDmManualAsync(long dm_ManualID);
 

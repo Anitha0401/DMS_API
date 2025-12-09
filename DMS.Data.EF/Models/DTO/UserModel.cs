@@ -1,4 +1,4 @@
-﻿namespace DMS.Data.EF.Models;
+﻿namespace DMS.Data.EF.Models.DTO;
 
 public class UserModel
 {

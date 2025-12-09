@@ -1,10 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
-using DMS.Application.Interface;
+﻿using DMS.Application.Interface;
 using DMS.Data.EF.Context;
-using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
 using MediatR;
-using DMS.Data.EF.DTO;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Application;
 

@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Models.Circulars;
 
@@ -10,8 +8,8 @@ namespace DMS.Data.EF.Models.Circulars;
 public partial class CIR_Blob
 {
     [Key]
-    [Column("DM_ManualID")]
-    public long DM_ManualID { get; set; }
+    [Column("CIR_BlobID")]
+    public long CIR_BlobID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;
@@ -19,61 +17,51 @@ public partial class CIR_Blob
     [Column("VesselID")]
     public int VesselID { get; set; }
 
-    [Column("DM_CategoryID")]
-    public long? DM_CategoryID { get; set; }
+    [Column("CIR_MasterID")]
+    public long? CIR_MasterID { get; set; }
 
-    [StringLength(10)]
-    public string ManualNo { get; set; } = null!;
+    [StringLength(150)]
+    public string Description { get; set; } = null!;
 
-    [StringLength(20)]
-    public string? ManualCode { get; set; }
-
-    [StringLength(250)]
-    public string? ManualName { get; set; }
-
-    [Column("DM_StatusID")]
-    public long DmStatusId { get; set; }
-
-    [Column("ParentId")]
-    public long ParentId { get; set; }
-
-    public int ManualLevel { get; set; }
-
-    public int? IsMainTitle { get; set; }
-
-    public int? IsAcknowledgementRequired { get; set; }
-
-    public int CanExport { get; set; }
-
-    public int IsApprovalRequired { get; set; }
-
-    public int? Approval_FlowID { get; set; }
+    [StringLength(150)]
+    public string? FileName { get; set; }
 
     [StringLength(50)]
-    [Unicode(false)]
-    public string? NextApproval_HQRole { get; set; }
+    public string? FileType { get; set; }
 
     [StringLength(50)]
-    [Unicode(false)]
-    public string? NextApproval_HQDept { get; set; }
+    public string? OriginalFileType { get; set; }
 
-    [StringLength(50)]
-    public string? SortOrder { get; set; }
+    public int BlobSize { get; set; }
 
-    [StringLength(250)]
-    public string? AddlSortOrder { get; set; }
-
-    [StringLength(50)]
-    public string? CreatedBy { get; set; }
+    public byte[]? BlobContents { get; set; }
 
     [Column(TypeName = "datetime")]
-    public DateTime? CreatedDate { get; set; }
+    public DateTime? AddedOn { get; set; }
+
+    [StringLength(150)]
+    [Unicode(false)]
+    public string? Cloud_ContainerName { get; set; }
+
+    [StringLength(150)]
+    [Unicode(false)]
+    public string? Cloud_Directory { get; set; }
 
     [StringLength(50)]
-    public string? ModifiedBy { get; set; }
+    public string? HQ_Storage_Option { get; set; }
 
-    [Column(TypeName = "datetime")]
-    public DateTime? ModifiedDate { get; set; }
+    [StringLength(150)]
+    public string? HQ_DatabaseName { get; set; }
 
-    public int? IsDeleted { get; set; }
+    [StringLength(150)]
+    public string? HQ_Local_Folder { get; set; }
+
+    [StringLength(50)]
+    public string? VSL_Storage_Option { get; set; }
+
+    [StringLength(150)]
+    public string? VSL_DatabaseName { get; set; }
+
+    [StringLength(150)]
+    public string? VSL_Local_Folder { get; set; }
 }

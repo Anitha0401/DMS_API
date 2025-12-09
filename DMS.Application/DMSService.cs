@@ -1,17 +1,13 @@
 ﻿using AutoMapper;
-using Azure.Core;
 using DMS.Application.Interface;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
-using DMS.Data.EF.DTO;
-using DMS.Data.EF.Models;
+using DMS.Data.EF.DTO.Manuals;
+using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
-using DMS.Data.EF.Query;
+using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
-using System.Net.Sockets;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace DMS.Application;
 
@@ -19,10 +15,10 @@ public class DMSService : IDMSService
 {
     private readonly DmsContext _dbContext;
     private readonly IMediator _mediator;
-    private readonly GeneralQueries _queries;
+    private readonly ManualGeneralQueries _queries;
     private readonly IMapper _mapper;
 
-    public DMSService(DmsContext context, IMediator mediator, GeneralQueries queries, IMapper mapper)
+    public DMSService(DmsContext context, IMediator mediator, ManualGeneralQueries queries, IMapper mapper)
     {
         _dbContext = context;
         _mediator = mediator;
@@ -191,12 +187,12 @@ public class DMSService : IDMSService
         return categoryList;
     }
 
-    public async Task<List<ApprovalFlowListDto>> GetApprovalFlowList()
+    public async Task<List<ManualApprovalFlowListDto>> GetApprovalFlowList()
     {
         var approvalList = await _dbContext.DmApprovalAndMailSetups
             .Select(x => x.FlowId)
             .Distinct()
-            .Select(flowId => new ApprovalFlowListDto
+            .Select(flowId => new ManualApprovalFlowListDto
             {
                 FlowID = flowId,
                 FlowDesc = "Flow - " + flowId,
@@ -206,9 +202,9 @@ public class DMSService : IDMSService
         return approvalList;
     }
 
-    public async Task<List<ApprovalDetailsDto>> GetApprovalDetailsForFlowID(int flowID)
+    public async Task<List<ManualApprovalRoleListDto>> GetApprovalDetailsForFlowID(int flowID)
     {
-        var approvalList = await _queries.GetApprovalFlowDetails(flowID);
+        var approvalList = await _queries.GetManualApprovalFlowDetails(flowID);
 
         return approvalList;
     }
@@ -434,11 +430,11 @@ public class DMSService : IDMSService
         return data;
     }
 
-    public async Task<List<NotificationDto>> GetManualNotificationListAsync(int limit)
+    public async Task<List<ManualNotificationDto>> GetManualNotificationListAsync(int limit)
     {
         var data = await _queries.GetNotificationList();
 
-        var notificationList = _mapper.Map<List<NotificationDto>>(data);
+        var notificationList = _mapper.Map<List<ManualNotificationDto>>(data);
 
         return notificationList;
     }
@@ -469,7 +465,7 @@ public class DMSService : IDMSService
         return result;
     }
 
-    public async Task<bool> ApproveManualAsync(ApproveManualDto request, bool isToSendBack)
+    public async Task<bool> ApproveManualAsync(ManualApproveDto request, bool isToSendBack)
     {
         if (request == null) throw new ArgumentNullException(nameof(request));
 

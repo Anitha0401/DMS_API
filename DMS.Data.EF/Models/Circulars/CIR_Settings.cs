@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Models.Circulars;
 
@@ -10,8 +8,8 @@ namespace DMS.Data.EF.Models.Circulars;
 public partial class CIR_Settings
 {
     [Key]
-    [Column("DM_SettingsID")]
-    public long DmSettingsId { get; set; }
+    [Column("CIR_SettingsID")]
+    public long CIR_SettingsID { get; set; }
 
     [StringLength(5)]
     [Unicode(false)]

@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Models.Circulars;
 
@@ -10,8 +8,8 @@ namespace DMS.Data.EF.Models.Circulars;
 public partial class CIR_Master
 {
     [Key]
-    [Column("DM_ManualID")]
-    public long DM_ManualID { get; set; }
+    [Column("CIR_MasterID")]
+    public long CIR_MasterID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;
@@ -19,49 +17,36 @@ public partial class CIR_Master
     [Column("VesselID")]
     public int VesselID { get; set; }
 
-    [Column("DM_CategoryID")]
-    public long? DM_CategoryID { get; set; }
+    [StringLength(15)]
+    public string CircularType { get; set; } = null!;
 
-    [StringLength(10)]
-    public string ManualNo { get; set; } = null!;
+    [Column("CIR_CategoryID")]
+    public long? CIR_CategoryID { get; set; }
 
-    [StringLength(20)]
-    public string? ManualCode { get; set; }
+    [StringLength(50)]
+    public string? CIR_Number { get; set; }
 
-    [StringLength(250)]
-    public string? ManualName { get; set; }
+    [StringLength(150)]
+    public string? Reference { get; set; }
 
-    [Column("DM_StatusID")]
-    public long DmStatusId { get; set; }
-
-    [Column("ParentId")]
-    public long ParentId { get; set; }
-
-    public int ManualLevel { get; set; }
-
-    public int? IsMainTitle { get; set; }
-
-    public int? IsAcknowledgementRequired { get; set; }
-
-    public int CanExport { get; set; }
-
-    public int IsApprovalRequired { get; set; }
-
-    public int? Approval_FlowID { get; set; }
+    [StringLength(500)]
+    [Unicode(false)]
+    public string? Title { get; set; }
 
     [StringLength(50)]
     [Unicode(false)]
-    public string? NextApproval_HQRole { get; set; }
+    public string? Status { get; set; }
 
-    [StringLength(50)]
-    [Unicode(false)]
-    public string? NextApproval_HQDept { get; set; }
+    public int? Priority { get; set; }
 
-    [StringLength(50)]
-    public string? SortOrder { get; set; }
+    [Column(TypeName = "datetime")]
+    public DateTime? DateIssued { get; set; }
 
-    [StringLength(250)]
-    public string? AddlSortOrder { get; set; }
+    [StringLength(500)]
+    public string? Remarks { get; set; }
+
+    [Column(TypeName = "datetime")]
+    public DateTime? ReleasedDate { get; set; }
 
     [StringLength(50)]
     public string? CreatedBy { get; set; }

@@ -1,5 +1,4 @@
-﻿ using DMS.Data.EF.DTO;
-using DMS.Data.EF.Models;
+﻿using DMS.Data.EF.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;

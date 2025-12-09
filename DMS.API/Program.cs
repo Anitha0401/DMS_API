@@ -1,14 +1,5 @@
-using DMS.Application;
-using DMS.API.Extension;
 using DMS.API;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
-using Microsoft.Identity.Web;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
-using AutoMapper;
-using MediatR;
+using DMS.API.Extension;
 
 var builder = WebApplication.CreateBuilder(args);
 

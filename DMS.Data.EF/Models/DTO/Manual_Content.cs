@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models;
+namespace DMS.Data.EF.Models.DTO;
 
 [Keyless]
 public class Manual_Content

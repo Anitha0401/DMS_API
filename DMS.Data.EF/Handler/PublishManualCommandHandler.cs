@@ -2,7 +2,7 @@
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
+using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,10 +10,10 @@ namespace DMS.Data.EF.Handler
 {
     public class PublishManualCommandHandler : IRequestHandler<PublishManualCommand, bool>
     {
-        private readonly GeneralQueries _queries;
+        private readonly ManualGeneralQueries _queries;
         DmsContext _dmsContext;
 
-        public PublishManualCommandHandler(DmsContext dmsContext, GeneralQueries queries)
+        public PublishManualCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
         {
             _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
             _queries = queries;

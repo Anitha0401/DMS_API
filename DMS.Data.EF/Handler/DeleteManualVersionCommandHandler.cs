@@ -1,17 +1,17 @@
 ﻿using AutoMapper;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
+using DMS.Data.EF.Query.Manuals;
 using MediatR;
 
 namespace DMS.Data.EF.Handler
 {
     public class DeleteManualVersionCommandHandler : IRequestHandler<DeleteManualVersionCommand, bool>
     {
-        private readonly GeneralQueries _queries;
+        private readonly ManualGeneralQueries _queries;
         DmsContext _dmsContext;
 
-        public DeleteManualVersionCommandHandler(DmsContext dmsContext, GeneralQueries queries)
+        public DeleteManualVersionCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
         {
             _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
             _queries = queries;

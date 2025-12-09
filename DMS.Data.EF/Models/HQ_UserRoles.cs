@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace DMS.Data.EF.Models;
+﻿namespace DMS.Data.EF.Models;
 
 public partial class HQ_UserRoles
 {

@@ -1,10 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
-using DMS.Application.Interface;
+﻿using DMS.Application.Interface;
 using DMS.Data.EF.Context;
-using DMS.Data.EF.Models;
-using DMS.Data.EF.Query;
+using DMS.Data.EF.Query.Manuals;
 using MediatR;
-using DMS.Data.EF.DTO;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Application;
 
@@ -12,9 +10,9 @@ public class VesselService : IVesselService
 {
     private readonly GeneralContext _dbContext;
     private readonly IMediator _mediator;
-    private readonly GeneralQueries _queries;
+    private readonly ManualGeneralQueries _queries;
 
-    public VesselService(GeneralContext context, IMediator mediator, GeneralQueries queries)
+    public VesselService(GeneralContext context, IMediator mediator, ManualGeneralQueries queries)
     {
         _dbContext = context;
         _mediator = mediator;

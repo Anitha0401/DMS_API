@@ -1,6 +1,6 @@
-﻿ using DMS.Data.EF.DTO;
-using DMS.Data.EF.Models;
-using DMS.Data.EF.Models.Circulars;
+﻿using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.DTO;
+using DMS.Data.EF.Models.Manuals;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;
@@ -14,9 +14,9 @@ public partial class CircularsContext : DbContext
         _dbActions = dbActions;
     }
 
-    public virtual DbSet<ManualCount_Dashboard> DashboardManualCount { get; set; } = null!;
+    //public virtual DbSet<ManualCount_Dashboard> DashboardManualCount { get; set; } = null!;
 
-    public virtual DbSet<Manual_TreeviewEntity> DmManual_Treeview { get; set; } = null!;
+    public virtual DbSet<CIR_TreeviewEntity> CIR_Treeview { get; set; } = null!;
 
     public virtual DbSet<CIR_Blob> CIR_Blob { get; set; } = null!;
     
@@ -32,8 +32,9 @@ public partial class CircularsContext : DbContext
 
     public virtual DbSet<CIR_UserFavourite> CIR_UserFavourite { get; set; }
 
-
     public virtual DbSet<CIR_Settings> CIR_Settings { get; set; }
+
+    public virtual DbSet<CIR_Notification> CIR_Notification { get; set; }
 
     public virtual DbSet<VwCIRMasterBlob> VwCIRMasterBlob { get; set; }
 
@@ -50,57 +51,60 @@ public partial class CircularsContext : DbContext
 
         modelBuilder.Entity<CIR_Category>(entity =>
         {
-            entity.HasKey(e => e.DM_CategoryID).HasName("PK_DM_ManualCategory");
+            entity.HasKey(e => e.CIR_CategoryID).HasName("PK_CIR_Category");
 
-            entity.Property(e => e.DM_CategoryID).ValueGeneratedNever();
-            //entity.Property(e => e.CategoryCode).HasDefaultValue("");
-            //entity.Property(e => e.IsDisabled).HasDefaultValue(0);
+            entity.Property(e => e.CIR_CategoryID).ValueGeneratedNever();
+            entity.Property(e => e.Category).HasDefaultValue("");
+            entity.Property(e => e.isActive).HasDefaultValue(0);
         });
 
         modelBuilder.Entity<CIR_Blob>(entity =>
         {
-            entity.Property(e => e.DM_ManualID).ValueGeneratedNever();
-            entity.Property(e => e.CanExport).HasDefaultValue(0);
-            entity.Property(e => e.CreatedDate).HasDefaultValueSql("(getdate())");
-            entity.Property(e => e.IsApprovalRequired).HasDefaultValue(0);
-            entity.Property(e => e.IsDeleted).HasDefaultValue(0);
-            entity.Property(e => e.ManualCode).HasDefaultValue("");
-            entity.Property(e => e.SortOrder).HasDefaultValueSql("((0))");
+            entity.Property(e => e.CIR_BlobID).ValueGeneratedNever();
+            entity.Property(e => e.AddedOn).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.HQ_DatabaseName).HasDefaultValue("");
+            entity.Property(e => e.HQ_Local_Folder).HasDefaultValue("");
+            entity.Property(e => e.HQ_Storage_Option).HasDefaultValue("");
+            entity.Property(e => e.VSL_DatabaseName).HasDefaultValue("");
+            entity.Property(e => e.VSL_Local_Folder).HasDefaultValue("");
+            entity.Property(e => e.VSL_Storage_Option).HasDefaultValue("");
+            entity.Property(e => e.Cloud_ContainerName).HasDefaultValue("");
+            entity.Property(e => e.Cloud_Directory).HasDefaultValue("");
         });
 
         modelBuilder.Entity<CIR_Log>(entity =>
         {
-            //entity.HasKey(e => e.).HasName("PK_DM_ManualLog");
+            entity.HasKey(e => e.CIR_LogID).HasName("PK_CIR_Log");
 
-            //entity.Property(e => e.DmManualLogId).ValueGeneratedNever();
-            //entity.Property(e => e.Activity).HasDefaultValue("");
-            //entity.Property(e => e.Logdate).HasDefaultValueSql("(getdate())");
-            //entity.Property(e => e.Remarks).HasDefaultValue("");
-            //entity.Property(e => e.UserName).HasDefaultValue("");
-            //entity.Property(e => e.UserRank).HasDefaultValue("");
+            entity.Property(e => e.CIR_LogID).ValueGeneratedNever();
+            entity.Property(e => e.Activity).HasDefaultValue("");
+            entity.Property(e => e.LogDate).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.Remarks).HasDefaultValue("");
+            entity.Property(e => e.UserName).HasDefaultValue("");
+            entity.Property(e => e.UserRank).HasDefaultValue("");
         });
 
 
-        //modelBuilder.Entity<CIR_UserAck>(entity =>
-        //{
-        //    entity.HasKey(e => e.CIR_UserAck).HasName("PK_DM_Manual_VslAck");
+        modelBuilder.Entity<CIR_UserAck>(entity =>
+        {
+            entity.HasKey(e => e.CIR_UserAckID).HasName("PK_CIR_UserAck");
 
-        //    entity.Property(e => e.DmManualUserAckId).ValueGeneratedNever();
-        //    entity.Property(e => e.Comments).HasDefaultValue("");
-        //    entity.Property(e => e.DateRead).HasDefaultValueSql("(getdate())");
-        //    entity.Property(e => e.IsActive).HasDefaultValue(0);
-        //});
+            entity.Property(e => e.CIR_UserAckID).ValueGeneratedNever();
+            entity.Property(e => e.Comments).HasDefaultValue("");
+            entity.Property(e => e.DateRead).HasDefaultValueSql("(getdate())");
+            entity.Property(e => e.IsActive).HasDefaultValue(0);
+        });
 
         modelBuilder.Entity<CIR_UserFavourite>(entity =>
         {
             entity.Property(e => e.CIR_UserFavouriteID).ValueGeneratedNever();
         });
 
-        modelBuilder.Entity<DM_ManualNotification>(entity =>
+        modelBuilder.Entity<CIR_Notification>(entity =>
         {
-            entity.HasKey(e => e.DM_ManualNotificationId).HasName("PK_DM_ManualNotification");
+            entity.HasKey(e => e.CIR_NotificationID).HasName("PK_CIR_Notification");
 
-            entity.Property(e => e.DM_ManualNotificationId).ValueGeneratedNever();
+            entity.Property(e => e.CIR_NotificationID).ValueGeneratedNever();
             entity.Property(e => e.Comments).HasDefaultValue("");
             entity.Property(e => e.CreatedDate).HasDefaultValueSql("(getdate())");
             entity.Property(e => e.IsRead).HasDefaultValue(0);
@@ -108,7 +112,7 @@ public partial class CircularsContext : DbContext
 
         modelBuilder.Entity<CIR_Settings>(entity =>
         {
-            entity.Property(e => e.DmSettingsId).ValueGeneratedNever();
+            entity.Property(e => e.CIR_SettingsID).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<VwCIRMasterBlob>(entity =>

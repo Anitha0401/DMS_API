@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Models.Circulars;
 
@@ -18,7 +16,7 @@ public partial class CIR_UserFavourite
 
     public int VesselID { get; set; }
 
-    public long DM_ManualID { get; set; }
+    public long CIR_MasterID { get; set; }
 
     [StringLength(50)]
     public string UserId { get; set; } = null!;

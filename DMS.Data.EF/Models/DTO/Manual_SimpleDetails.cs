@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace DMS.Data.EF.Models;
+﻿namespace DMS.Data.EF.Models.DTO;
 
 public partial class Manual_SimpleDetails
 {

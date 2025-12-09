@@ -1,9 +1,9 @@
 ﻿using AutoMapper;
 using DMS.Data.EF.Context;
-using DMS.Data.EF.DTO;
+using DMS.Data.EF.DTO.Manuals;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Models.Manuals;
-using DMS.Data.EF.Query;
+using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +11,10 @@ namespace DMS.Data.EF.Handler
 {
     public class UpdateManualRightsCommandHandler : IRequestHandler<UpdateManualRightsCommand, bool>
     {
-        private readonly GeneralQueries _queries;
+        private readonly ManualGeneralQueries _queries;
         private readonly DmsContext _dmsContext;
 
-        public UpdateManualRightsCommandHandler(DmsContext dmsContext, GeneralQueries queries)
+        public UpdateManualRightsCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
         {
             _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
             _queries = queries;

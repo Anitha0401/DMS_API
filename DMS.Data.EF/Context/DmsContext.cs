@@ -1,5 +1,5 @@
-﻿ using DMS.Data.EF.DTO;
-using DMS.Data.EF.Models;
+﻿using DMS.Data.EF.DTO.Manuals;
+using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,7 +26,7 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<ManualCount_Dashboard> DashboardManualCount { get; set; } = null!;
 
-    public virtual DbSet<ApprovalDetailsDto> approvalFlowDetails { get; set; } = null!;
+    public virtual DbSet<ManualApprovalRoleListDto> approvalFlowDetails { get; set; } = null!;
 
     public virtual DbSet<ManualUserAckList> UserAckLists { get; set; } = null!;
 
@@ -249,7 +249,7 @@ public partial class DmsContext : DbContext
             eb.ToView(null);
         });
 
-        modelBuilder.Entity<ApprovalDetailsDto>(eb =>
+        modelBuilder.Entity<ManualApproveDto>(eb =>
         {
             eb.HasNoKey();
             eb.ToView(null);
