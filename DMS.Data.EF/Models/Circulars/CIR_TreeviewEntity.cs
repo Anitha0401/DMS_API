@@ -21,6 +21,8 @@ public class CIR_TreeviewEntity
 
     public string? StatusString { get; set; }
 
+    public string? Priority { get; set; }
+
     public string? DateIssued { get; set; }
 
     public long ParentID { get; set; }
@@ -30,4 +32,6 @@ public class CIR_TreeviewEntity
     public int? IsActive { get; set; }
 
     public int IsFavourite { get; set; }
+
+    public int IsCategory { get; set; }
 }

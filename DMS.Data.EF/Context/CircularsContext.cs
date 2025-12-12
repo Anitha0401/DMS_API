@@ -1,6 +1,6 @@
-﻿using DMS.Data.EF.Models.Circulars;
+﻿using DMS.Data.EF.DTO.Circulars;
+using DMS.Data.EF.Models.Circulars;
 using DMS.Data.EF.Models.DTO;
-using DMS.Data.EF.Models.Manuals;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;
@@ -13,8 +13,6 @@ public partial class CircularsContext : DbContext
     {
         _dbActions = dbActions;
     }
-
-    //public virtual DbSet<ManualCount_Dashboard> DashboardManualCount { get; set; } = null!;
 
     public virtual DbSet<CIR_TreeviewEntity> CIR_Treeview { get; set; } = null!;
 
@@ -30,6 +28,10 @@ public partial class CircularsContext : DbContext
 
     public virtual DbSet<CIR_UserAck> CIR_UserAck { get; set; } = null!;
 
+    public virtual DbSet<CIR_ToAck_Vsl> CIR_ToAck_Vsl { get; set; } = null!;
+
+    public virtual DbSet<CIR_ToAck_HQ> CIR_ToAck_HQ { get; set; } = null!;
+
     public virtual DbSet<CIR_UserFavourite> CIR_UserFavourite { get; set; }
 
     public virtual DbSet<CIR_Settings> CIR_Settings { get; set; }
@@ -39,7 +41,18 @@ public partial class CircularsContext : DbContext
     public virtual DbSet<VwCIRMasterBlob> VwCIRMasterBlob { get; set; }
 
     public virtual DbSet<VwCIRNotification> VwCIRNotification { get; set; }
-    
+
+    public virtual DbSet<VwCIRVesselAck> Vw_CIR_VesselAck { get; set; }
+
+
+    public virtual DbSet<CIRMasterList> CIRMasterList { get; set; }
+
+    public virtual DbSet<CircularsChart> CircularsChart { get; set; }
+
+    public virtual DbSet<CircularCount_Dashboard> CircularCount_Dashboard { get; set; } = null!;
+
+    public virtual DbSet<CIRRecentList> CIRRecentList { get; set; } = null!;
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -115,6 +128,7 @@ public partial class CircularsContext : DbContext
             entity.Property(e => e.CIR_SettingsID).ValueGeneratedNever();
         });
 
+
         modelBuilder.Entity<VwCIRMasterBlob>(entity =>
         {
             entity.ToView("Vw_CIR_MasterBlob");
@@ -125,14 +139,24 @@ public partial class CircularsContext : DbContext
             entity.ToView("Vw_CIRNotification");
         });
 
+        modelBuilder.Entity<VwCIRVesselAck>(entity =>
+        {
+            entity.ToView("Vw_CIR_VesselAck");
+        });
 
-        modelBuilder.Entity<Manual_TreeviewDto>(eb =>
+        modelBuilder.Entity<CircularsChart>(eb =>
+        {
+            eb.HasNoKey();
+            eb.ToView(null); // prevent EF expecting a DB view/table
+        });
+
+        modelBuilder.Entity<Circulars_TreeviewDto>(eb =>
         {
             eb.HasNoKey();
             eb.ToView(null); // prevents EF from expecting a database view/table
         });
 
-        modelBuilder.Entity<Manual_TreeviewEntity>(eb =>
+        modelBuilder.Entity<CIR_TreeviewEntity>(eb =>
         {
             eb.HasNoKey();
             eb.ToView(null);

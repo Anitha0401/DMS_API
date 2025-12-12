@@ -21,3 +21,14 @@ public static class ManualNotificationType
     public const string ASSIGNRIGHTS = "AssignRights";
     public const string FAVOURITE = "Favourite";
 }
+
+public static class CIRNotificationType
+{
+    public const string ADD = "Add";
+    public const string EDIT = "Edit";
+    public const string DELETE = "Delete";
+    public const string APPROVE = "Approve";
+    public const string PUBLISH = "Publish";
+    public const string ASSIGNRIGHTS = "AssignRights";
+    public const string FAVOURITE = "Favourite";
+}

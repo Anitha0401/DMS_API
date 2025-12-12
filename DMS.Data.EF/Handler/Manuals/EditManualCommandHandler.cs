@@ -10,23 +10,23 @@ using Microsoft.EntityFrameworkCore;
 using System.Data.SqlTypes;
 using System.Reflection.Metadata;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.Handler.Manuals
 {
     public class EditManualCommandHandler : IRequestHandler<EditManualCommand, CreateManualResultDto>
     {
         private readonly ManualGeneralQueries _queries;
-        DmsContext _dmsContext;
+        DmsContext _dbContext;
 
-        public EditManualCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
+        public EditManualCommandHandler(DmsContext dbContext, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _queries = queries;
         }
 
         public async Task<CreateManualResultDto> Handle(EditManualCommand request, CancellationToken cancellationToken)
         {
             string remarks = "";
-            var dmManual = _dmsContext.DmManuals
+            var dmManual = _dbContext.DmManuals
                             .Where(x => x.DM_ManualID == request.Manual.DM_ManualID)
                             .FirstOrDefault();
 
@@ -35,7 +35,7 @@ namespace DMS.Data.EF.Handler
                 throw new ArgumentNullException(nameof(dmManual), "Manual not exists");
             }
 
-            var dmManualVersion = _dmsContext.DmManualVersions
+            var dmManualVersion = _dbContext.DmManualVersions
                             .Where(x => x.DM_ManualVersionID == request.Manual.DM_ManualVersionID)
                             .FirstOrDefault();
 
@@ -46,12 +46,12 @@ namespace DMS.Data.EF.Handler
 
             if (dmManual.DM_CategoryID != request.Manual.DM_CategoryID)
             {
-                var fromCategory = _dmsContext.DmCategories
+                var fromCategory = _dbContext.DmCategories
                                     .Where(c => c.DM_CategoryID == dmManual.DM_CategoryID)
                                     .Select(x => x.CategoryName)
                                     .FirstOrDefault();
 
-                var toCategory = _dmsContext.DmCategories
+                var toCategory = _dbContext.DmCategories
                                   .Where(c => c.DM_CategoryID == request.Manual.DM_CategoryID)
                                   .Select(x => x.CategoryName)
                                   .FirstOrDefault();
@@ -130,7 +130,7 @@ namespace DMS.Data.EF.Handler
             {
                 if (dmManual.DmStatusId == DMStatusConstant.STATUS_RELEASE)
                 {
-                    dmManual.DmStatusId = _dmsContext.DmStatuses.FirstOrDefault(x => x.StatusName == "Draft")?.DmStatusId ?? -1;
+                    dmManual.DmStatusId = _dbContext.DmStatuses.FirstOrDefault(x => x.StatusName == "Draft")?.DmStatusId ?? -1;
 
                     var currentVersion = string.IsNullOrEmpty(dmManualVersion.Version) ? "" : dmManualVersion.Version;
                     string[] parts = currentVersion.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -144,7 +144,7 @@ namespace DMS.Data.EF.Handler
                     string nextVersion = $"{major + 1}.0";
 
                     var newDMManualVersion = new DmManualVersion();
-                    newDMManualVersion.DM_ManualVersionID = (_dmsContext.DmManualVersions
+                    newDMManualVersion.DM_ManualVersionID = (_dbContext.DmManualVersions
                                                           .Select(m => (long?)m.DM_ManualVersionID)
                                                           .Max() ?? 0) + 1;
                     newDMManualVersion.DM_ManualID = dmManual.DM_ManualID;
@@ -153,7 +153,7 @@ namespace DMS.Data.EF.Handler
                     newDMManualVersion.Version = nextVersion;
                     newDMManualVersion.IsActive = 1;
                     newDMManualVersion.TextContents = request.Manual.TextContents;
-                    _dmsContext.DmManualVersions.Add(newDMManualVersion);
+                    _dbContext.DmManualVersions.Add(newDMManualVersion);
 
                     dmManualVersion.IsActive = 0;
 
@@ -183,10 +183,10 @@ namespace DMS.Data.EF.Handler
                     if (nextDM_StatusID != DMStatusConstant.STATUS_RELEASE)
                     {
                         var nextApproval = await (
-                                        from setup in _dmsContext.DmApprovalAndMailSetups
+                                        from setup in _dbContext.DmApprovalAndMailSetups
                                         where setup.FlowId == request.Manual.Approval_FlowID
                                             && setup.DmStatusId == nextDM_StatusID
-                                            && !_dmsContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
+                                            && !_dbContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
                                                                                         && a.UserRole == setup.UserRole && a.HQDept == setup.HQDept)
                                         orderby setup.ApprovalOrder
                                         select setup
@@ -223,8 +223,8 @@ namespace DMS.Data.EF.Handler
                 dmManualVersion.LastModifiedBy = request.Manual.UserID;
                 dmManualVersion.LastModifiedDate = DateTime.UtcNow;
 
-                _dmsContext.DmManuals.Update(dmManual);
-                _dmsContext.DmManualVersions.Update(dmManualVersion);
+                _dbContext.DmManuals.Update(dmManual);
+                _dbContext.DmManualVersions.Update(dmManualVersion);
 
                 // Add Log
                 await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Edited", "Manual Name: " + request.Manual.ManualName + Environment.NewLine + remarks);
@@ -232,7 +232,7 @@ namespace DMS.Data.EF.Handler
                 await _queries.AddNotification(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "", notificationType, notificationTitle, "Manual: " + request.Manual.ManualName);
             }
 
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             return new CreateManualResultDto
             {

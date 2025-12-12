@@ -21,6 +21,8 @@ public partial class VwCIRMasterBlob
 
     public long? CIR_CategoryID { get; set; }
 
+    public string Category { get; set; } = null!;
+
     public string CIR_Number { get; set; } = null!;
 
     public string? Status { get; set; }

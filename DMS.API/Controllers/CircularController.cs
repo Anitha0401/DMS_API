@@ -1,4 +1,7 @@
 ﻿using DMS.Application.Interface;
+using DMS.Data.EF.DTO.Circulars;
+using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,32 +21,99 @@ public class CircularController : ControllerBase
         _logger = logger;
     }
 
-    // Main Page - treeview
-    [HttpGet("GetTreeViewCircularList")]
-    public async Task<ActionResult<List<Manual_TreeviewDto>>> GetTreeViewManualList(string userId, string circularType)
+    [HttpGet("GetCategories")]
+    public async Task<ActionResult<List<CircularCategoryDto>>> GetCategories(bool isToIncludeAll, string? circularType = null)
     {
-        _logger.LogInformation("Get Treeview Circular list");
-        var manualList = await _service.GetTreeViewCircularsListAsync(userId, circularType);
-        
-        return Ok(manualList);
+        _logger.LogInformation("Get CIR categories (circularType={circularType})", circularType);
+        var categories = await _service.GetCategoriesAsync(isToIncludeAll, circularType);
+        return Ok(categories);
     }
 
-    [HttpPost("AddToFavourite")]
-    public ActionResult AddToFavourite(long dm_ManualID, string circularType, string userID) // Mark method as async
+    [HttpGet("GetCIR_CategoryChartData")]
+    public async Task<ActionResult<List<CircularsChart>>> GetCIR_CategoryChartData(string circularType)
     {
-        // Validation
-
-        _service.AddToFavouriteAsync(dm_ManualID, circularType, userID); // Await the async method
-
-        return Ok();
+        _logger.LogInformation("Get Circulars chart data (circularType={circularType})", circularType);
+        var chartData = await _service.GetCIR_CategoryChartDataAsync(circularType);
+        return Ok(chartData);
     }
 
-    // Get user notifications
+    [HttpGet("GetRecentCirculars")]
+    public async Task<ActionResult<List<CIRRecentList>>> GetRecentCirculars(string circularType, int limit = 10)
+    {
+        _logger.LogInformation("Get Recent Circulars (circularType={circularType}, limit={limit})", circularType, limit);
+        var recent = await _service.GetRecentCircularsAsync(circularType, limit);
+        return Ok(recent);
+    }
+
+    [HttpGet("GetDashboardCircularCounts")]
+    public async Task<ActionResult<CircularCount_Dashboard>> GetDashboardCircularCounts()
+    {
+        _logger.LogInformation("Get Dashboard Circular counts");
+        var counts = await _service.GetDashboardCircularCountsAsync();
+        return Ok(counts);
+    }
+
     [HttpGet("GetCircularsNotifications")]
     public async Task<IActionResult> GetCircularsNotifications(int limit = 10)
     {
         var notifications = await _service.GetCIRNotificationListAsync(limit);
         return Ok(notifications);
+    }
+
+
+    [HttpGet("GetTreeViewCircularList")]
+    public async Task<ActionResult<List<Circulars_TreeviewDto>>> GetTreeViewManualList(string userId, string circularType)
+    {
+        _logger.LogInformation("Get Treeview Circular list");
+        var manualList = await _service.GetTreeViewCircularsListAsync(userId, circularType);
+
+        return Ok(manualList);
+    }
+
+    [HttpGet("GetCIRMasterList")]
+    public async Task<ActionResult<List<CIRMasterList>>> GetCIRMasterList(string userId, long categoryId, string circularType)
+    {
+        _logger.LogInformation("Get CIR master list (categoryId={categoryId}, circularType={circularType})", categoryId, circularType);
+        var masters = await _service.GetCIRMasterListAsync(userId, categoryId, circularType);
+        return Ok(masters);
+    }
+
+    [HttpGet("GetVesselAckList/{cir_MasterID}")]
+    public async Task<ActionResult<List<CircularUserAckDto>>> GetVesselAckList(long cir_MasterID)
+    {
+        _logger.LogInformation("Get Vessel ack list (cir_MasterID={cir_MasterID})", cir_MasterID);
+        var ackList = await _service.GetVesselAckListAsync(cir_MasterID);
+        return Ok(ackList);
+    }
+
+    [HttpGet("GetNextCIRNumbersByCategory")]
+    public async Task<ActionResult<string>> GetNextCIRNumbersByCategory(long categoryId)
+    {
+        _logger.LogInformation("Get CIR numbers by category (categoryId={categoryId})", categoryId);
+        var numbers = await _service.GetNextCIRNumbersByCategoryAsync(categoryId);
+        return Ok(numbers);
+    }
+
+    [HttpPost("AddCircular")]
+    public async Task<ActionResult<CIR_Master>> CreateCircular([FromBody] CreateCircularDto createdDto)
+    {
+        if (createdDto is null)
+            return BadRequest("Circular payload is required.");
+
+        var created = await _service.CreateCircularAsync(createdDto);
+
+        // Return created entity; adjust Created location as needed.
+        return Created(string.Empty, created);
+    }
+
+    [HttpPost("AddToFavourite")]
+    public ActionResult AddToFavourite(long cir_MasterID, string circularType, string userID) // Mark method as async
+    {
+        // Validation
+
+        _service.AddToFavouriteAsync(cir_MasterID, circularType, userID); // Await the async method
+
+        return Ok();
     }
 
     // Mark notification as read

@@ -13,20 +13,20 @@ namespace DMS.Data.EF.Query.Manuals;
 
 public class ManualGeneralQueries : IManualGeneralQueries
 {
-    private readonly DmsContext _dmsContext;
+    private readonly DmsContext _dbContext;
     private readonly GeneralContext _generalContext;
     private readonly IConfiguration _configuration;
 
-    public ManualGeneralQueries(DmsContext dmsContext, GeneralContext generalContext, IConfiguration config)
+    public ManualGeneralQueries(DmsContext dbContext, GeneralContext generalContext, IConfiguration config)
     {
-        _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(_dmsContext));
+        _dbContext = dbContext ?? throw new ArgumentNullException(nameof(_dbContext));
         _generalContext = generalContext ?? throw new ArgumentNullException(nameof(_generalContext));
         _configuration = config ?? throw new ArgumentNullException("config");
     }
 
     public async Task<List<Manual_TreeviewEntity>> GetDmManualTreeviewAsync(string userID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .DmManual_Treeview
                             .FromSqlInterpolated($"EXEC GetManual_TreeViewList @UserID = {userID}")
                             .AsNoTracking()
@@ -37,7 +37,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<List<ManualVersionDetailsDto>> GetDmManualVersionList(long dm_ManualID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .DmManualVersionList
                             .FromSqlInterpolated($"EXEC GetManualVersionList @DM_ManualID = {dm_ManualID}")
                             .AsNoTracking()
@@ -48,7 +48,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<List<ManualDetails>> GetUserActionManualList(string userID, string calledMode)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .DmManualList
                             .FromSqlInterpolated($"EXEC GetManual_UserActionList @UserID = {userID}, @CalledMode = {calledMode}")
                             .AsNoTracking()
@@ -59,7 +59,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
    
     public async Task<ManualCount_User> GetUserManualCount(string userID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .UserManualCount
                             .FromSqlInterpolated($"EXEC GetManual_Cnt_User @UserID = {userID}")
                             .AsNoTracking()
@@ -81,7 +81,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<ManualCount_Dashboard> GetDashboardManualCounts(string userID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .DashboardManualCount
                             .FromSqlInterpolated($"EXEC GetManual_Cnt_Dashboard @UserID = {userID}")
                             .AsNoTracking()
@@ -106,7 +106,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<List<ManualUserAckList>> GetUserAckList(long dm_ManualID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .UserAckLists
                             .FromSqlInterpolated($"EXEC GetManualUserAckList @DM_ManualID = {dm_ManualID}")
                             .AsNoTracking()
@@ -117,7 +117,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<List<VwManualNotification>> GetNotificationList()
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .VwManualNotification
                             .Where(x => x.CreatedDate >= DateTime.Now.AddDays(-30))
                             .OrderByDescending(x => x.CreatedDate)
@@ -129,7 +129,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
     {
-        var dm_Manual_LogID = (_dmsContext.DmManualLogs
+        var dm_Manual_LogID = (_dbContext.DmManualLogs
                                 .Select(m => (long?)m.DmManualLogId)
                                 .Max() ?? 0) + 1;
 
@@ -147,15 +147,15 @@ public class ManualGeneralQueries : IManualGeneralQueries
             Logdate = DateTime.Now,
         };
 
-        _dmsContext.DmManualLogs.Add(manualLog);
-        await _dmsContext.SaveChangesAsync();
+        _dbContext.DmManualLogs.Add(manualLog);
+        await _dbContext.SaveChangesAsync();
     }
 
     public async Task AddNotification(long dm_ManualID, long dm_ManualVersionID, string userID, string notificationType, string notificationTitle, string description)
     {
         try
         {
-            var nextDM_ManualNotificationID = _dmsContext.DM_ManualNotification
+            var nextDM_ManualNotificationID = _dbContext.DM_ManualNotification
                                               .Select(m => (long?)m.DM_ManualNotificationId)
                                               .Max() ?? 0;
 
@@ -173,9 +173,9 @@ public class ManualGeneralQueries : IManualGeneralQueries
             manualNotification.UserID = userID;
             manualNotification.IsRead = 0;
             manualNotification.CreatedDate = DateTime.Now;
-            await _dmsContext.DM_ManualNotification.AddAsync(manualNotification);
+            await _dbContext.DM_ManualNotification.AddAsync(manualNotification);
 
-            await _dmsContext.SaveChangesAsync();
+            await _dbContext.SaveChangesAsync();
         }
         catch (Exception ex)
         {
@@ -186,7 +186,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<string?> GetDmManualContentAsync(long dm_ManualID, bool includeSubManuals)
     {
-        var result = await _dmsContext.DmManualContent
+        var result = await _dbContext.DmManualContent
                                 .FromSqlInterpolated($"EXEC GetManualAndSubManualContent @DM_ManualID = {dm_ManualID}, @IncludeSubManuals = {includeSubManuals}")
                                 .AsNoTracking()
                                 .ToListAsync();
@@ -251,7 +251,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<List<ManualApprovalRoleListDto>> GetManualApprovalFlowDetails(int flowID)
     {
-        var result = await _dmsContext
+        var result = await _dbContext
                             .approvalFlowDetails
                             .FromSqlInterpolated($"EXEC GetManualApprovalFlowDetails @FlowID = {flowID}")
                             .AsNoTracking()
@@ -262,7 +262,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<long> GetNextApprovalStatusID(int approval_FlowID, long current_DM_StatusID)
     {
-        var nextDM_StatusID = await _dmsContext.DmApprovalAndMailSetups
+        var nextDM_StatusID = await _dbContext.DmApprovalAndMailSetups
                                         .Where(af => af.FlowId == approval_FlowID && af.DmStatusId == current_DM_StatusID)
                                         .Select(af => af.NextDmStatusId)
                                         .FirstOrDefaultAsync();
@@ -272,7 +272,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<long> GetSendBackApprovalStatusID(int approval_FlowID, long current_DM_StatusID)
     {
-        var nextDM_StatusID = await _dmsContext.DmApprovalAndMailSetups
+        var nextDM_StatusID = await _dbContext.DmApprovalAndMailSetups
                                         .Where(af => af.FlowId == approval_FlowID && af.DmStatusId == current_DM_StatusID)
                                         .Select(af => af.SendBackDmStatusId)
                                         .FirstOrDefaultAsync();
@@ -288,7 +288,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
         using var conn = new SqlConnection(connStr);
         await conn.OpenAsync(); // Does this throw?
 
-        var connection = _dmsContext.Database.GetDbConnection();
+        var connection = _dbContext.Database.GetDbConnection();
         await using var command = connection.CreateCommand();
         command.CommandText = "GetManual_TreeViewList";
         command.CommandType = CommandType.StoredProcedure;
@@ -317,7 +317,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<string?> xxGetDmManualContent_ScalarAsync(long DM_ManualID)
     {
-        var connection = _dmsContext.Database.GetDbConnection();
+        var connection = _dbContext.Database.GetDbConnection();
 
         await using (var command = connection.CreateCommand())
         {
@@ -339,7 +339,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task<bool> xxCheckDmManualAsync(int manualID)
     {
-        return await _dmsContext.DmManuals.AnyAsync(e => e.DM_ManualID == manualID);
+        return await _dbContext.DmManuals.AnyAsync(e => e.DM_ManualID == manualID);
     }
 
 

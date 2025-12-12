@@ -1,12 +1,30 @@
 ﻿using DMS.Data.EF.DTO.Circulars;
+using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.DTO;
 
 namespace DMS.Application.Interface;
 
 public interface ICIRService
 {
     public Task<List<Circulars_TreeviewDto>> GetTreeViewCircularsListAsync(string userID, string circularType);
+   
+    public Task<List<CIRMasterList>> GetCIRMasterListAsync(string userID, long categoryId, string circularType);
+  
+    public Task<List<CircularCategoryDto>> GetCategoriesAsync(bool isToIncludeAll, string? circularType = null);
 
+    public Task<List<CircularsChart>> GetCIR_CategoryChartDataAsync(string circularType);
+
+    public Task<List<CIRRecentList>> GetRecentCircularsAsync(string circularType, int limit = 10);
+    
+    public Task<CircularCount_Dashboard> GetDashboardCircularCountsAsync();
+    
     public Task<List<CircularsNotificationDto>> GetCIRNotificationListAsync(int limit);
+
+    public Task<List<CircularUserAckDto>> GetVesselAckListAsync(long cir_MasterID);
+
+    public Task<string> GetNextCIRNumbersByCategoryAsync(long categoryId);
+
+    public Task<long> CreateCircularAsync(CreateCircularDto createDto);
 
     public Task AddToFavouriteAsync(long cir_MasterID, string circularType, string userID);
 }

@@ -19,6 +19,9 @@ public partial class CIR_Category
     [StringLength(15)]
     public string CircularType { get; set; } = null!;
 
+    [StringLength(10)]
+    public string CategoryCode { get; set; } = null!;
+
     [StringLength(50)]
     public string? Category { get; set; }
 

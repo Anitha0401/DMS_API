@@ -22,19 +22,26 @@ public class CircularsTreeviewDataDto
 
     public string? CIR_Number { get; set; }
 
+    public string Title { get; set; } = null!;
+
     public string? StatusString { get; set; }
 
     public string? Category { get; set; }
 
     public string? Reference { get; set; }
 
-    public int? IsActive { get; set; }
+    public string? Priority { get; set; }
+
+    public string? DateIssued { get; set; }
 
     public long ParentID { get; set; }
 
     public int CIRLevel { get; set; }
 
+    public int? IsActive { get; set; }
+
     public int IsFavourite { get; set; }
 
-    public string DateIssued { get; set; }
+    public int IsCategory { get; set; }
+
 }

@@ -8,22 +8,22 @@ using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.Handler.Manuals
 {
     public class ApproveManualCommandHandler : IRequestHandler<ApproveManualCommand, bool>
     {
         private readonly ManualGeneralQueries _queries;
-        DmsContext _dmsContext;
+        DmsContext _dbContext;
 
-        public ApproveManualCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
+        public ApproveManualCommandHandler(DmsContext dbContext, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _queries = queries;
         }
 
         public async Task<bool> Handle(ApproveManualCommand request, CancellationToken cancellationToken)
         {
-            var dmManual = _dmsContext.DmManuals
+            var dmManual = _dbContext.DmManuals
                                 .Where(x => x.DM_ManualID == request.Manual.DM_ManualID)
                                 .FirstOrDefault();
             if (dmManual == null)
@@ -31,7 +31,7 @@ namespace DMS.Data.EF.Handler
                 throw new ArgumentNullException(nameof(dmManual), "Manual not exists");
             }
 
-            var dmManualVersion = _dmsContext.DmManualVersions
+            var dmManualVersion = _dbContext.DmManualVersions
                                         .Where(x => x.DM_ManualVersionID == request.Manual.DM_ManualVersionID)
                                         .FirstOrDefault();
 
@@ -47,7 +47,7 @@ namespace DMS.Data.EF.Handler
                 // Insert a new record into DmManualApprovedLists
                 var approvedListEntry = new DmManualApprovedList
                 {
-                    DmManualApprovedListId = (_dmsContext.DmManualApprovedLists
+                    DmManualApprovedListId = (_dbContext.DmManualApprovedLists
                                              .Select(m => (long?)m.DmManualApprovedListId)
                                              .Max() ?? 0) + 1,
                     Origin = "HQ",
@@ -60,8 +60,8 @@ namespace DMS.Data.EF.Handler
                     ApprovedDate = DateTime.UtcNow,
                     Comments = request.Manual.Comments
                 };
-                _dmsContext.DmManualApprovedLists.Add(approvedListEntry);
-                await _dmsContext.SaveChangesAsync(cancellationToken);
+                _dbContext.DmManualApprovedLists.Add(approvedListEntry);
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
 
             // Get the next approval step for the current approval flow and status
@@ -88,10 +88,10 @@ namespace DMS.Data.EF.Handler
             if (nextDM_StatusID != DMStatusConstant.STATUS_RELEASE)
             {
                 var nextApproval = await (
-                                from setup in _dmsContext.DmApprovalAndMailSetups
+                                from setup in _dbContext.DmApprovalAndMailSetups
                                 where setup.FlowId == dmManual.Approval_FlowID
                                     && setup.DmStatusId == nextDM_StatusID
-                                    && !_dmsContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
+                                    && !_dbContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
                                                                                 && a.UserRole == setup.UserRole && a.HQDept == setup.HQDept)
                                 orderby setup.ApprovalOrder
                                 select setup
@@ -118,9 +118,9 @@ namespace DMS.Data.EF.Handler
                 dmManualVersion.ReleasedDate = DateTime.UtcNow;
             }
 
-            _dmsContext.DmManuals.Update(dmManual);
-            _dmsContext.DmManualVersions.Update(dmManualVersion);
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            _dbContext.DmManuals.Update(dmManual);
+            _dbContext.DmManualVersions.Update(dmManualVersion);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             await _queries.AddNotification(dmManual.DM_ManualID, dmManualVersion.DM_ManualVersionID, "", notificationType, notificationTitle, "Manual: " + request.Manual.ManualName);
 

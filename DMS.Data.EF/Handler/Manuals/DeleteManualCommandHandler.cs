@@ -4,22 +4,22 @@ using DMS.Data.EF.Models;
 using DMS.Data.EF.Query.Manuals;
 using MediatR;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.Handler.Manuals
 {
     public class DeleteManualCommandHandler : IRequestHandler<DeleteManualCommand, bool>
     {
         private readonly ManualGeneralQueries _queries;
-        DmsContext _dmsContext;
+        DmsContext _dbContext;
 
-        public DeleteManualCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
+        public DeleteManualCommandHandler(DmsContext dbContext, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _queries = queries;
         }
 
         public async Task<bool> Handle(DeleteManualCommand request, CancellationToken cancellationToken)
         {
-            var dmManual = _dmsContext.DmManuals
+            var dmManual = _dbContext.DmManuals
                             .Where(x => x.DM_ManualID == request.Manual.DM_ManualID)
                             .FirstOrDefault();
 
@@ -31,10 +31,10 @@ namespace DMS.Data.EF.Handler
             dmManual.IsDeleted = 1;
             dmManual.ModifiedBy = request.Manual.UserID;
             dmManual.ModifiedDate = DateTime.UtcNow;
-            _dmsContext.DmManuals.Update(dmManual);
+            _dbContext.DmManuals.Update(dmManual);
 
             // Optionally, can also delete related versions & attachments
-            var manualVersions = _dmsContext.DmManualVersions
+            var manualVersions = _dbContext.DmManualVersions
                                     .Where(v => v.DM_ManualID == request.Manual.DM_ManualID)
                                     .ToList();
             if (manualVersions.Any())
@@ -43,10 +43,10 @@ namespace DMS.Data.EF.Handler
                 {
                     version.IsActive = 0;
                 }
-                _dmsContext.DmManualVersions.UpdateRange(manualVersions);
+                _dbContext.DmManualVersions.UpdateRange(manualVersions);
             }
 
-            var attachments = _dmsContext.DmManualAttachments
+            var attachments = _dbContext.DmManualAttachments
                                 .Where(a => a.DM_ManualID == request.Manual.DM_ManualID)
                                 .ToList();
             if (attachments.Any())
@@ -55,12 +55,12 @@ namespace DMS.Data.EF.Handler
                 {
                     attachments[i].IsDeleted = 1;
                 }
-                _dmsContext.DmManualAttachments.UpdateRange(attachments);
+                _dbContext.DmManualAttachments.UpdateRange(attachments);
             }
 
             await _queries.AddToLog(request.Manual.DM_ManualID, -1, "Manual Deleted", "Manual Name: " + dmManual.ManualName);
 
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             return true;
         }

@@ -7,16 +7,16 @@ using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.Handler.Manuals
 {
     public class UpdateManualRightsCommandHandler : IRequestHandler<UpdateManualRightsCommand, bool>
     {
         private readonly ManualGeneralQueries _queries;
-        private readonly DmsContext _dmsContext;
+        private readonly DmsContext _dbContext;
 
-        public UpdateManualRightsCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
+        public UpdateManualRightsCommandHandler(DmsContext dbContext, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _queries = queries;
         }
 
@@ -25,7 +25,7 @@ namespace DMS.Data.EF.Handler
             var DM_ManualID = request.Manual.DM_ManualID;
 
             //Vessel and Roles to Ack
-            var existingVslAcks = await _dmsContext.DmManualToAckVsls
+            var existingVslAcks = await _dbContext.DmManualToAckVsls
                                             .Where(x => x.DM_ManualID == DM_ManualID)
                                             .ToListAsync(cancellationToken);
 
@@ -41,9 +41,9 @@ namespace DMS.Data.EF.Handler
                 }
             }
 
-            var nextDM_Manual_ToAck_VslID = (_dmsContext.DmManualToAckVsls
+            var nextDM_Manual_ToAck_VslID = _dbContext.DmManualToAckVsls
                                  .Select(m => (long?)m.DmManualToAckVslId)
-                                 .Max() ?? 0);
+                                 .Max() ?? 0;
 
             foreach (int vesslID in vesselIdList)
             {
@@ -68,13 +68,13 @@ namespace DMS.Data.EF.Handler
                         roleToAck.VesselID = vesslID;
                         roleToAck.UserRank = vslRank;
                         roleToAck.IsActive = 1;
-                        _dmsContext.DmManualToAckVsls.Add(roleToAck);
+                        _dbContext.DmManualToAckVsls.Add(roleToAck);
                     }
                 }
             }
 
             //HQ user to Ack
-            var existingHqAcks = await _dmsContext.DmManualToAckHqs
+            var existingHqAcks = await _dbContext.DmManualToAckHqs
                                            .Where(x => x.DM_ManualID == DM_ManualID)
                                            .ToListAsync(cancellationToken);
 
@@ -88,9 +88,9 @@ namespace DMS.Data.EF.Handler
                 }
             }
 
-            var nextDmManual_ToAck_HQID = (_dmsContext.DmManualToAckHqs
+            var nextDmManual_ToAck_HQID = _dbContext.DmManualToAckHqs
                                  .Select(m => (long?)m.DmManualToAckHqid)
-                                 .Max() ?? 0);
+                                 .Max() ?? 0;
             foreach (int hqUserID in hqUsersIdList)
             {
                 var existing = existingHqAcks.FirstOrDefault(x => x.HqUsersId == hqUserID);
@@ -113,11 +113,11 @@ namespace DMS.Data.EF.Handler
                     hqToAck.DM_ManualID = DM_ManualID;
                     hqToAck.Role = "";
                     hqToAck.IsActive = 1;
-                    _dmsContext.DmManualToAckHqs.Add(hqToAck);
+                    _dbContext.DmManualToAckHqs.Add(hqToAck);
                 }
             }
 
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             await _queries.AddToLog(DM_ManualID, -1, "Manual Rights Assigned", "");
 

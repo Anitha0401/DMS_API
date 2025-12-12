@@ -6,22 +6,22 @@ using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Handler
+namespace DMS.Data.EF.Handler.Manuals
 {
     public class PublishManualCommandHandler : IRequestHandler<PublishManualCommand, bool>
     {
         private readonly ManualGeneralQueries _queries;
-        DmsContext _dmsContext;
+        DmsContext _dbContext;
 
-        public PublishManualCommandHandler(DmsContext dmsContext, ManualGeneralQueries queries)
+        public PublishManualCommandHandler(DmsContext dbContext, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _queries = queries;
         }
 
         public async Task<bool> Handle(PublishManualCommand request, CancellationToken cancellationToken)
         {
-            var dmManual = await _dmsContext.DmManuals
+            var dmManual = await _dbContext.DmManuals
                                    .Where(x => x.DM_ManualID == request.Manual.DM_ManualID)
                                    .FirstOrDefaultAsync();
 
@@ -30,7 +30,7 @@ namespace DMS.Data.EF.Handler
                 throw new ArgumentNullException(nameof(dmManual), "Manual not exists");
             }
 
-            var dmManualVersion = _dmsContext.DmManualVersions
+            var dmManualVersion = _dbContext.DmManualVersions
                                     .Where(x => x.DM_ManualVersionID == request.Manual.DM_ManualVersionID)
                                     .FirstOrDefault();
             if (dmManualVersion == null)
@@ -38,7 +38,7 @@ namespace DMS.Data.EF.Handler
                 throw new ArgumentNullException(nameof(dmManualVersion), "Manual version not exists");
             }
 
-            var previousManualVersion = _dmsContext.DmManualVersions
+            var previousManualVersion = _dbContext.DmManualVersions
                                           .Where(d => d.DM_ManualID == request.Manual.DM_ManualID && 
                                                       d.DM_ManualVersionID != request.Manual.DM_ManualVersionID && 
                                                       d.IsDisabled == 0)
@@ -47,7 +47,7 @@ namespace DMS.Data.EF.Handler
             {
                 previousManualVersion.IsActive = 0;
                 previousManualVersion.IsDisabled = 1;
-                _dmsContext.DmManualVersions.Update(previousManualVersion);
+                _dbContext.DmManualVersions.Update(previousManualVersion);
             }
 
             string nextApproval_HQRole = "", nextApproval_HQDept = "";
@@ -56,12 +56,12 @@ namespace DMS.Data.EF.Handler
             {
                 // Get the next approval step for the current approval flow and status
                 var nextApproval = await (
-                                        from setup in _dmsContext.DmApprovalAndMailSetups
+                                        from setup in _dbContext.DmApprovalAndMailSetups
                                         where setup.FlowId == dmManual.Approval_FlowID
                                             && setup.DmStatusId == dmManual.DmStatusId
                                             && setup.NextDmStatusId != null && setup.NextDmStatusId > 0
                                             // Exclude if UserRole already exists in DM_Manual_ApprovedList for this manual
-                                            && !_dmsContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
+                                            && !_dbContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
                                                                                         && a.UserRole == setup.UserRole && a.HQDept == setup.HQDept)
                                         orderby setup.ApprovalOrder
                                         select setup
@@ -94,12 +94,12 @@ namespace DMS.Data.EF.Handler
                 dmManualVersion.ReleasedDate = DateTime.UtcNow;
             }
 
-            _dmsContext.DmManuals.Update(dmManual);
-            _dmsContext.DmManualVersions.Update(dmManualVersion);
+            _dbContext.DmManuals.Update(dmManual);
+            _dbContext.DmManualVersions.Update(dmManualVersion);
 
             await _queries.AddToLog(request.Manual.DM_ManualID, request.Manual.DM_ManualVersionID, "Manual Published", "Manual Name: " + dmManual.ManualName + Environment.NewLine + "Version: " + dmManualVersion.Version);
 
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             return true;
         }

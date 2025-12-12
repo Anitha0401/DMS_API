@@ -1,6 +1,6 @@
 ﻿namespace DMS.Data.EF.DTO.Circulars;
 
-public class DeleteCircularsDto
+public class DeleteCircularDto
 {
     public required long DM_ManualID { get; set; }
 

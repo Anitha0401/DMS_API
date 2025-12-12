@@ -13,11 +13,11 @@ namespace DMS.Data.EF.Handler
     {
         private readonly IMapper _mapper;
         private readonly ManualGeneralQueries _queries;
-        private readonly DmsContext _dmsContext;
+        private readonly DmsContext _dbContext;
 
-        public CreateManualCommandHandler(DmsContext dmsContext, IMapper mapper, ManualGeneralQueries queries)
+        public CreateManualCommandHandler(DmsContext dbContext, IMapper mapper, ManualGeneralQueries queries)
         {
-            _dmsContext = dmsContext ?? throw new ArgumentNullException(nameof(dmsContext), "DmsContext cannot be null");
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "DmsContext cannot be null");
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper), "Mapper cannot be null");
             _queries = queries;
         }
@@ -26,7 +26,7 @@ namespace DMS.Data.EF.Handler
         {
             var dmManual = _mapper.Map<DmManual>(request.Manual);
 
-            var manuals = _dmsContext.DmManuals
+            var manuals = _dbContext.DmManuals
                             .AsEnumerable()
                             .Select(i => new
                             {
@@ -97,7 +97,7 @@ namespace DMS.Data.EF.Handler
 
             #region Manual No
             var nextManualNo = "0.0";
-            var maxManualNo = await _dmsContext.DmManuals
+            var maxManualNo = await _dbContext.DmManuals
                                  .Where(x => x.ParentId == parentId)
                                  .OrderByDescending(x => x.ManualNo)
                                  .Select(m => m.ManualNo)
@@ -118,7 +118,7 @@ namespace DMS.Data.EF.Handler
             }
             else
             {
-                maxManualNo = await _dmsContext.DmManuals
+                maxManualNo = await _dbContext.DmManuals
                                     .Where(x => x.DM_ManualID == parentId)
                                     .OrderByDescending(x => x.ManualNo)
                                     .Select(m => m.ManualNo)
@@ -131,7 +131,7 @@ namespace DMS.Data.EF.Handler
             var manualLevel = 0;
             if (parentId != -1)
             {
-                var parentManualLevel = await _dmsContext.DmManuals
+                var parentManualLevel = await _dbContext.DmManuals
                                                    .Where(x => x.DM_ManualID == parentId)
                                                    .Select(m => m.ManualLevel)
                                                    .FirstOrDefaultAsync();
@@ -144,13 +144,13 @@ namespace DMS.Data.EF.Handler
             #endregion
 
             //Insert Manual
-            dmManual.DM_ManualID = (_dmsContext.DmManuals
+            dmManual.DM_ManualID = (_dbContext.DmManuals
                                  .Select(m => (long?)m.DM_ManualID)
                                  .Max() ?? 0) + 1;
             dmManual.Origin = "HQ";
             dmManual.VesselID = -1;
             dmManual.ManualNo = nextManualNo;
-           
+
             dmManual.ParentId = parentId;
             dmManual.ManualLevel = manualLevel;
             dmManual.SortOrder = sortOrder;
@@ -174,10 +174,10 @@ namespace DMS.Data.EF.Handler
                     if (nextDM_StatusID != DMStatusConstant.STATUS_RELEASE)
                     {
                         var nextApproval = await (
-                                            from setup in _dmsContext.DmApprovalAndMailSetups
+                                            from setup in _dbContext.DmApprovalAndMailSetups
                                             where setup.FlowId == request.Manual.Approval_FlowID
                                                 && setup.DmStatusId == nextDM_StatusID
-                                                && !_dmsContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
+                                                && !_dbContext.DmManualApprovedLists.Any(a => a.DM_ManualID == dmManual.DM_ManualID
                                                                                             && a.UserRole == setup.UserRole && a.HQDept == setup.HQDept)
                                             orderby setup.ApprovalOrder
                                             select setup
@@ -197,12 +197,12 @@ namespace DMS.Data.EF.Handler
             dmManual.NextApproval_HQRole = nextApproval_HQRole;
             dmManual.NextApproval_HQDept = nextApproval_HQDept;
 
-            _dmsContext.DmManuals.Add(dmManual);
+            _dbContext.DmManuals.Add(dmManual);
 
             // Insert Manual Version
             var dmManualVersion = _mapper.Map<DmManualVersion>(request.Manual);
 
-            dmManualVersion.DM_ManualVersionID = (_dmsContext.DmManualVersions
+            dmManualVersion.DM_ManualVersionID = (_dbContext.DmManualVersions
                                  .Select(m => (long?)m.DM_ManualVersionID)
                                  .Max() ?? 0) + 1;
             dmManualVersion.DM_ManualID = dmManual.DM_ManualID;
@@ -212,9 +212,9 @@ namespace DMS.Data.EF.Handler
             dmManualVersion.IsActive = 1;
             dmManualVersion.IsDisabled = 0;
 
-            _dmsContext.DmManualVersions.Add(dmManualVersion);
+            _dbContext.DmManualVersions.Add(dmManualVersion);
 
-            await _dmsContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
             string remarks = "Manual Name: " + dmManual.ManualName;
             if (request.Manual.IsApprovalRequired == 1)
