@@ -1,4 +1,5 @@
 ﻿using DMS.Application.Interface;
+using DMS.Data.EF.DTO;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;
@@ -22,6 +23,16 @@ public class VesselController : ControllerBase
         _logger.LogInformation("Get Vsl Type List");
 
         var hqUsertList = await _service.GetVslTypeList();
+
+        return Ok(hqUsertList);
+    }
+
+    [HttpGet("GetVessels")]
+    public async Task<ActionResult<List<VesselListDto>>> GetVessels()
+    {
+        _logger.LogInformation("Get Vessel List");
+
+        var hqUsertList = await _service.GetVesselList();
 
         return Ok(hqUsertList);
     }

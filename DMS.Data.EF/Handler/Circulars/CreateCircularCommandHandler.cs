@@ -63,6 +63,41 @@ namespace DMS.Data.EF.Handler
             
             _dbContext.CIR_Blob.Add(cir_Blob);
 
+            var allowedUsersToAck = await _dbContext.CIR_CategoryExt
+                                        .Where(c => c.CIR_CategoryID == request.createCIR.CIR_CategoryID)
+                                        .Select(x => x.AllowedUsersToAck)
+                                        .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(allowedUsersToAck))
+            {
+                var userRanksList = allowedUsersToAck
+                                    .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(u => u.Trim())
+                                    .Where(u => !string.IsNullOrWhiteSpace(u))
+                                    .ToList();
+
+                if (userRanksList.Count > 0)
+                {
+                    var nextId = (_dbContext.CIR_ToAck_Vsl
+                                         .Select(m => (long?)m.CIR_ToAck_VslID)
+                                         .Max() ?? 0) + 1;
+                    foreach (var userRank in userRanksList)
+                    {
+                        var toAckEntity = new CIR_ToAck_Vsl();
+
+                        toAckEntity.CIR_ToAck_VslID = nextId;
+                        toAckEntity.CIR_MasterID = cir_Master.CIR_MasterID;
+                        toAckEntity.Origin = "HQ";
+                        toAckEntity.VesselID = -1;
+                        toAckEntity.UserRank = userRank;
+                        toAckEntity.IsActive = 1;
+
+                        _dbContext.CIR_ToAck_Vsl.Add(toAckEntity);
+                        nextId++;
+                    }
+                }
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             string notificationType = CIRNotificationType.ADD, notificationTitle = "New " + request.createCIR.CircularType + " Added";
