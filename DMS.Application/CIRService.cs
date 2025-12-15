@@ -10,7 +10,9 @@ using DMS.Data.EF.Query;
 using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Numerics;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace DMS.Application;
 
@@ -170,13 +172,114 @@ public class CIRService : ICIRService
     }
 
 
-    public async Task<string> GetNextCIRNumbersByCategoryAsync(long categoryId)
+    public async Task<GetNextCIRNumberResponseDto> GetNextCIRNumbersByCategoryAsync(long categoryId, long cir_MasterID)
     {
-        var cir_Number = await _queries.GetNextCIRNumbersByCategoryAsync(categoryId);
+        // Validate category
+        var cat = await _dbContext.CIR_Category
+                   .Where(c => c.CIR_CategoryID == categoryId)
+                   .Select(c => new { CategoryCode = c.CategoryCode ?? string.Empty, CircularType = c.CircularType ?? string.Empty })
+                   .FirstOrDefaultAsync();
 
-        return cir_Number;
+        if (cat == null)
+            throw new InvalidOperationException($"Category with ID {categoryId} not found.");
+
+        var year = DateTime.UtcNow.Year;
+        var circularTypePrefix = cat.CircularType == "Circulars" ? "CIR" : "ALT";
+        var prefix = $"{circularTypePrefix}-{cat.CategoryCode}-{year}-";
+
+        // Get existing numbers with the same prefix
+        var existingNumbers = await _dbContext.CIR_Master
+                                    .Where(m => m.CIR_CategoryID == categoryId
+                                             && m.CIR_Number != null
+                                             && Microsoft.EntityFrameworkCore.EF.Functions.Like(m.CIR_Number!, $"{prefix}%"))
+                                    .Select(m => m.CIR_Number!)
+                                    .AsNoTracking()
+                                    .ToListAsync();
+
+        // Find max sequence used
+        var maxSeq = 0;
+        foreach (var num in existingNumbers)
+        {
+            var parts = num.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 4)
+            {
+                var last = parts[^1];
+                if (int.TryParse(last, out var seq))
+                    maxSeq = Math.Max(maxSeq, seq);
+            }
+        }
+
+        var nextSeq = maxSeq + 1;
+        var cir_Number = $"{prefix}{nextSeq:D4}";
+
+        var allowedUserToAck = await _dbContext.CIR_CategoryExt
+                                       .Where(c => c.CIR_CategoryID == categoryId)
+                                       .Select(c => c.AllowedUsersToAck)
+                                       .FirstOrDefaultAsync();
+
+        var cir_Master = await _dbContext.CIR_Master
+                              .Where(m => m.CIR_MasterID == cir_MasterID)
+                              .OrderByDescending(m => m.CIR_MasterID)
+                              .FirstOrDefaultAsync();
+        if (cir_Master != null)
+        {
+            cir_Master.CIR_Number = cir_Number;
+            cir_Master.CIR_CategoryID = categoryId;
+            _dbContext.CIR_Master.Update(cir_Master);
+            await _dbContext.SaveChangesAsync();
+        }
+
+        return new GetNextCIRNumberResponseDto
+        {
+            CirNumber = cir_Number,
+            AllowedUserToAck = allowedUserToAck ?? string.Empty
+        };
     }
 
+    public async Task<long> InsertCIR_MasterRecord(string circularType)
+    {
+        try
+        {
+            var cir_Master = new CIR_Master();
+            cir_Master.CIR_MasterID = (_dbContext.CIR_Master
+                                     .Select(m => (long?)m.CIR_MasterID)
+                                     .Max() ?? 0) + 1;
+            cir_Master.Origin = "HQ";
+            cir_Master.VesselID = -1;
+            cir_Master.Status = "Temp";
+            cir_Master.CIR_Number = "Temp";
+            cir_Master.CIR_CategoryID = -1;
+            cir_Master.CircularType = circularType;
+            _dbContext.CIR_Master.Add(cir_Master);
+            await _dbContext.SaveChangesAsync();
+
+            return cir_Master.CIR_MasterID;
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("Failed to insert CIR_Master record", ex);
+        }
+    }
+
+    public async Task RemoveTempCIRAsync(long cir_MasterID)
+    {
+        try
+        {
+            var cir_Master = await _dbContext.CIR_Master
+                                  .Where(m => m.CIR_MasterID == cir_MasterID)
+                                  .OrderByDescending(m => m.CIR_MasterID)
+                                  .FirstOrDefaultAsync();
+            if (cir_Master != null)
+            {
+                _dbContext.CIR_Master.Remove(cir_Master);
+                await _dbContext.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        { 
+            //throw new Exception("Failed to remove CIR_Master record", ex);
+        }
+    }
 
     public async Task<long> CreateCircularAsync(CreateCircularDto createDto)
     {

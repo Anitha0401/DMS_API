@@ -20,8 +20,6 @@ public interface ICIRGeneralQueries
 
     public Task<List<CircularUserAckDto>> GetVesselAckListAsync(long cir_MasterID);
 
-    public Task<string> GetNextCIRNumbersByCategoryAsync(long categoryId);
-
 
     public Task AddToLog(long cir_MasterID, string activity, string remarks);
 

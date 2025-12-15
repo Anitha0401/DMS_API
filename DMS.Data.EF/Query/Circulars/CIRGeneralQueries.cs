@@ -196,50 +196,6 @@ public class CIRGeneralQueries : ICIRGeneralQueries
         }
     }
 
-    public async Task<string> GetNextCIRNumbersByCategoryAsync(long categoryId)
-    {
-        // Validate category
-        var cat = await _dbContext.CIR_Category
-                   .Where(c => c.CIR_CategoryID == categoryId)
-                   .Select(c => new { CategoryCode = c.CategoryCode ?? string.Empty, CircularType = c.CircularType ?? string.Empty })
-                   .FirstOrDefaultAsync();
-
-        if (cat == null)
-            throw new InvalidOperationException($"Category with ID {categoryId} not found.");
-
-        var year = DateTime.UtcNow.Year;
-        var circularTypePrefix = cat.CircularType == "Circulars" ? "CIR" : "ALT";
-        var prefix = $"{circularTypePrefix}-{cat.CategoryCode}-{year}-";
-
-        // Get existing numbers with the same prefix
-        var existingNumbers = await _dbContext.CIR_Master
-                                    .Where(m => m.CIR_CategoryID == categoryId
-                                             && m.CIR_Number != null
-                                             && Microsoft.EntityFrameworkCore.EF.Functions.Like(m.CIR_Number!, $"{prefix}%"))
-                                    .Select(m => m.CIR_Number!)
-                                    .AsNoTracking()
-                                    .ToListAsync();
-
-        // Find max sequence used
-        var maxSeq = 0;
-        foreach (var num in existingNumbers)
-        {
-            var parts = num.Split('-', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 4)
-            {
-                var last = parts[^1];
-                if (int.TryParse(last, out var seq))
-                    maxSeq = Math.Max(maxSeq, seq);
-            }
-        }
-
-        var nextSeq = maxSeq + 1;
-        var cir_Number = $"{prefix}{nextSeq:D4}";
-
-        return cir_Number;
-    }
-
-
     public async Task AddToLog(long cir_MasterID, string activity, string remarks)
     {
         try

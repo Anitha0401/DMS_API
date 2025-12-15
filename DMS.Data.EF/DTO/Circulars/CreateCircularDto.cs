@@ -10,6 +10,8 @@ public class CreateCircularDto
 
     public string? CIR_Number { get; set; }
 
+    public string? AllowedUserToAck { get; set; }
+
     public string? Reference { get; set; }
 
     public string? Title { get; set; }

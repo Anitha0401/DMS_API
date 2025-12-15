@@ -22,7 +22,11 @@ public interface ICIRService
 
     public Task<List<CircularUserAckDto>> GetVesselAckListAsync(long cir_MasterID);
 
-    public Task<string> GetNextCIRNumbersByCategoryAsync(long categoryId);
+    public Task<GetNextCIRNumberResponseDto> GetNextCIRNumbersByCategoryAsync(long categoryId, long cir_MasterID);
+
+    public Task RemoveTempCIRAsync(long cir_MasterID);
+
+    public Task<long> InsertCIR_MasterRecord(string circularType);
 
     public Task<long> CreateCircularAsync(CreateCircularDto createDto);
 

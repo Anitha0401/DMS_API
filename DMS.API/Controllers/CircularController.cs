@@ -87,11 +87,29 @@ public class CircularController : ControllerBase
     }
 
     [HttpGet("GetNextCIRNumbersByCategory")]
-    public async Task<ActionResult<string>> GetNextCIRNumbersByCategory(long categoryId)
+    public async Task<ActionResult<string>> GetNextCIRNumbersByCategory(long categoryId, long cir_MasterID)
     {
         _logger.LogInformation("Get CIR numbers by category (categoryId={categoryId})", categoryId);
-        var numbers = await _service.GetNextCIRNumbersByCategoryAsync(categoryId);
+        var numbers = await _service.GetNextCIRNumbersByCategoryAsync(categoryId, cir_MasterID);
         return Ok(numbers);
+    }
+
+
+    [HttpPost("AddCirMaster")]
+    public async Task<ActionResult<long>> AddCIR_MasterRecord(string circularType)
+    {
+        var result = await _service.InsertCIR_MasterRecord(circularType);
+
+        return result;
+    }
+
+
+    [HttpDelete("RemoveTempCIR")]
+    public async Task<ActionResult<long>> RemoveTempCIR(long cir_MasterID)
+    {
+       await _service.RemoveTempCIRAsync(cir_MasterID);
+
+        return Ok();
     }
 
     [HttpPost("AddCircular")]
