@@ -2,23 +2,39 @@
 
 public class EditCircularDto : CircularsBaseDto
 {
-    public required long DM_CategoryID { get; set; }
+    public required long CIR_CategoryID { get; set; }
 
-    public string? ManualCode { get; set; }
+    public string? CIR_Number { get; set; }
 
-    public string TextContents { get; set; } = string.Empty;
+    public string AllowedUserToAck { get; set; } = string.Empty;
+   
+    public string Reference { get; set; } = string.Empty;
 
-    public int? IsMainTitle {  get; set; } = 0;
+    public string Title { get; set; } = string.Empty;
     
-    public int? IsAcknowledgementRequired {  get; set; } = 0;
+    public string Status { get; set; } = string.Empty;
+    
+    public int Priority { get; set; }
 
-    public int CanExport { get; set; } = 0;
+    public DateTime? DateIssued { get; set; }
 
-    public int IsApprovalRequired { get; set; } = 0;
+    public DateTime? ReleasedDate { get; set; }
 
-    public int? Approval_FlowID { get; set; } = 0;
+    public string? Remarks { get; set; }
+    
+    public string CreatedBy { get; set; } = string.Empty;
+
+    public string Description { get; set; } = string.Empty;
+
+    public string FileName { get; set; } = string.Empty;
+
+    public string FileType { get; set; } = string.Empty;
+
+    public string OriginalFileType { get; set; } = string.Empty;
+
+    public int BlobSize { get; set; }
+
+    public byte[]? BlobContents { get; set; }
 
     public string CalledMode { get; set; } = string.Empty;
-
-    public bool IsToPublish { get; set; } = false;
 }

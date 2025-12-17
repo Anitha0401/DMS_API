@@ -24,6 +24,11 @@ public interface ICIRService
 
     public Task<GetNextCIRNumberResponseDto> GetNextCIRNumbersByCategoryAsync(long categoryId, long cir_MasterID);
 
+    public Task<EditCircularDto> GetCIRDetailsAsync(long cirMasterId);
+
+    public Task<List<CIR_LogDto>> GetCircularLogsAsync(long cirMasterId);
+
+
     public Task RemoveTempCIRAsync(long cir_MasterID);
 
     public Task<long> InsertCIR_MasterRecord(string circularType);

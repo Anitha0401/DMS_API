@@ -2,6 +2,7 @@
 using DMS.Application.Interface;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.DTO.Manuals;
 using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
@@ -437,6 +438,26 @@ public class DMSService : IDMSService
         var notificationList = _mapper.Map<List<ManualNotificationDto>>(data);
 
         return notificationList;
+    }
+
+    public async Task<List<ManualLogDto>> GetManualLogsAsync(long dm_ManualID)
+    {
+        var logs = await _dbContext.DmManualLogs
+                            .Where(l => l.DM_ManualID == dm_ManualID)
+                            .OrderByDescending(l => l.Logdate)
+                            .Select(l => new ManualLogDto
+                            {
+                                DM_ManualLogID = l.DmManualLogId,
+                                DM_ManualID = l.DM_ManualID,
+                                DM_ManualVersionID = l.DM_ManualVersionID,
+                                Logdate = l.Logdate,
+                                UserId = l.UserName,
+                                UserName = l.UserName,
+                                Activity = l.Activity,
+                                Remarks = l.Remarks,
+                            })
+                            .ToListAsync();
+        return logs;
     }
 
 

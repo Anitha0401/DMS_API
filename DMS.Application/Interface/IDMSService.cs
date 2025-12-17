@@ -1,4 +1,5 @@
-﻿using DMS.Data.EF.DTO.Manuals;
+﻿using DMS.Data.EF.DTO.Circulars;
+using DMS.Data.EF.DTO.Manuals;
 using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 
@@ -43,6 +44,9 @@ public interface IDMSService
     public Task<List<ManualUserAckList>> GetManualUserAckListAsync(long dm_ManualID);
     
     public Task<List<ManualNotificationDto>> GetManualNotificationListAsync(int limit);
+    
+    public Task<List<ManualLogDto>> GetManualLogsAsync(long dm_ManualID);
+
 
     public Task UpdateManualRights(ManualRightsDto request);
     

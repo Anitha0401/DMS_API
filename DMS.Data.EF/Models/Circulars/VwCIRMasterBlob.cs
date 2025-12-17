@@ -21,15 +21,13 @@ public partial class VwCIRMasterBlob
 
     public long? CIR_CategoryID { get; set; }
 
-    public string Category { get; set; } = null!;
-
     public string CIR_Number { get; set; } = null!;
 
     public string? Status { get; set; }
 
     public string? Title { get; set; }
 
-    public string? Priority { get; set; }
+    public int? Priority { get; set; }
 
     public string? Reference { get; set; }
 

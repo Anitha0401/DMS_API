@@ -171,7 +171,6 @@ public class CIRService : ICIRService
         return data;
     }
 
-
     public async Task<GetNextCIRNumberResponseDto> GetNextCIRNumbersByCategoryAsync(long categoryId, long cir_MasterID)
     {
         // Validate category
@@ -235,6 +234,52 @@ public class CIRService : ICIRService
             AllowedUserToAck = allowedUserToAck ?? string.Empty
         };
     }
+
+    public async Task<EditCircularDto> GetCIRDetailsAsync(long cirMasterId)
+    {
+        var query = from cir in _dbContext.VwCIRMasterBlob
+                    where cir.CIR_MasterID == cirMasterId
+                    join category in _dbContext.CIR_Category on cir.CIR_CategoryID equals category.CIR_CategoryID
+                    join categoryExt in _dbContext.CIR_CategoryExt on cir.CIR_CategoryID equals categoryExt.CIR_CategoryID into categoryExtJoin
+                    from categoryExt in categoryExtJoin.DefaultIfEmpty()
+                    select new
+                    {
+                        Circular = cir,
+                        AllowedUsersToAck = categoryExt != null ? categoryExt.AllowedUsersToAck : null
+                    };
+
+        var result = await query.AsNoTracking().FirstOrDefaultAsync();
+
+        if (result?.Circular == null)
+        {
+            throw new Exception($"Circular with ID {cirMasterId} not found.");
+        }
+
+        var circularDto = _mapper.Map<EditCircularDto>(result.Circular);
+        circularDto.AllowedUserToAck = result.AllowedUsersToAck ?? string.Empty;
+
+        return circularDto;
+    }
+
+    public async Task<List<CIR_LogDto>> GetCircularLogsAsync(long cirMasterId)
+    {
+        var logs = await _dbContext.CIR_Log
+                            .Where(l => l.CIR_MasterID == cirMasterId)
+                            .OrderByDescending(l => l.LogDate)
+                            .Select(l => new CIR_LogDto
+                            {
+                                CIR_LogID = l.CIR_LogID,
+                                CIR_MasterID = l.CIR_MasterID,
+                                Logdate = l.LogDate,
+                                UserId = l.UserId,
+                                UserName = l.UserName,
+                                Activity = l.Activity,
+                                Remarks = l.Remarks,
+                            })
+                            .ToListAsync();
+        return logs;
+    }
+
 
     public async Task<long> InsertCIR_MasterRecord(string circularType)
     {

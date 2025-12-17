@@ -94,6 +94,21 @@ public class CircularController : ControllerBase
         return Ok(numbers);
     }
 
+    [HttpGet("GetCIRDetails/{ciR_MasterID}")]
+    public async Task<IActionResult> GetCIRDetails(long ciR_MasterID)
+    {
+        _logger.LogInformation("Get Circular details (cirMasterId={ciR_MasterID})", ciR_MasterID);
+        var result = await _service.GetCIRDetailsAsync(ciR_MasterID);
+        return Ok(result);
+    }
+
+    [HttpGet("GetCircularLogs")]
+    public async Task<IActionResult> GetCircularLogs(long ciR_MasterID)
+    {
+        _logger.LogInformation("Get Circular logs (cirMasterId={ciR_MasterID})", ciR_MasterID);
+        var logs = await _service.GetCircularLogsAsync(ciR_MasterID);
+        return Ok(logs);
+    }
 
     [HttpPost("AddCirMaster")]
     public async Task<ActionResult<long>> AddCIR_MasterRecord(string circularType)
