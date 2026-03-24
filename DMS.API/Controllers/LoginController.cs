@@ -1,6 +1,6 @@
 ﻿using DMS.API.Dto;
 using DMS.Application.Interface;
-using DMS.Data.EF.Models.DTO;
+using DMS.Data.EF.DTO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;

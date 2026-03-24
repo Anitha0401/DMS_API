@@ -1,6 +1,5 @@
 ﻿using DMS.Application.Interface;
 using DMS.Data.EF.DTO.Manuals;
-using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.AspNetCore.Mvc;
 
@@ -26,6 +25,7 @@ public class DMSController : ControllerBase
     {
         _logger.LogInformation("Get Treeview Manual list");
         var manualList = await _service.GetTreeViewManualListAsync(userId);
+
         
         return Ok(manualList);
     }
@@ -134,7 +134,7 @@ public class DMSController : ControllerBase
     public async Task<ActionResult<List<DmManualAttachment>>> GetManualAttachments(long dm_ManualID)
     {
         _logger.LogInformation("Get Manual Attachments");
-        var manualAttachments = await _service.GetManualAttachmentListAsync(dm_ManualID); // Await the async method
+        var manualAttachments = await _service.GetManualAttachmentListAsync(dm_ManualID);
 
         return Ok(manualAttachments);
     }
@@ -206,72 +206,72 @@ public class DMSController : ControllerBase
     }
 
     [HttpPost("AddManual")]
-    public async Task<ActionResult<CreateManualResultDto>> AddManual(CreateManualDto manual) // Mark method as async
+    public async Task<ActionResult<CreateManualResultDto>> AddManual(CreateManualDto manual)
     {
         // Validation
 
-        var DM_ManualID = await _service.AddDmManualAsync(manual); // Await the async method
+        var DM_ManualID = await _service.AddDmManualAsync(manual);
 
         return Ok(DM_ManualID);
     }
 
     [HttpPost("EditManual")]
-    public async Task<ActionResult> EditManual(EditManualDto manual) // Mark method as async
+    public async Task<ActionResult> EditManual(EditManualDto manual)
     {
         // Validation
         //Call Edit
-        await _service.UpdateDmManualAsync(manual); // Await the async method
+        await _service.UpdateDmManualAsync(manual);
 
         return Ok();
     }
 
     [HttpPost("ApproveManual")]
-    public async Task<ActionResult> ApproveManual(ManualApproveDto request) // Mark method as async
+    public async Task<ActionResult> ApproveManual(ManualApproveDto request)
     {
         // Validation
 
-        var DM_ManualVersionID = await _service.ApproveManualAsync(request, false); // Await the async method
+        var result = await _service.ApproveManualAsync(request, false);
 
-        return Ok(DM_ManualVersionID);
+        return Ok(result);
     }
 
     [HttpPost("PublishManual")]
-    public async Task<ActionResult> PublishManual(ManualApproveDto request) // Mark method as async
+    public async Task<ActionResult> PublishManual(ManualApproveDto request)
     {
         // Validation
 
-        var DM_ManualVersionID = await _service.ApproveManualAsync(request, false); // Await the async method
+        var result = await _service.ApproveManualAsync(request, false);
 
-        return Ok(DM_ManualVersionID);
+        return Ok(result);
     }
 
     [HttpPost("SendBackManual")]
-    public async Task<ActionResult> SendBackManual(ManualApproveDto request) // Mark method as async
+    public async Task<ActionResult> SendBackManual(ManualApproveDto request)
     {
         // Validation
 
-        var DM_ManualVersionID = await _service.ApproveManualAsync(request, true); // Await the async method
+        var DM_ManualVersionID = await _service.ApproveManualAsync(request, true);
 
         return Ok(DM_ManualVersionID);
     }
 
     [HttpDelete("DeleteManual/{DM_ManualID}")]
-    public async Task<ActionResult> DeleteManual(long dm_ManualID) // Mark method as async
+    public async Task<ActionResult> DeleteManual(long dm_ManualID)
     {
         // object
         // Validation
 
-        await _service.DeleteDmManualAsync(dm_ManualID); // Await the async method
+        await _service.DeleteDmManualAsync(dm_ManualID);
 
         return Ok();
     }
 
     [HttpDelete("DeleteManualVersion/{DM_ManualID}")]
-    public async Task<ActionResult> DeleteManualVersion(long dm_ManualID) // Mark method as async
+    public async Task<ActionResult> DeleteManualVersion(long dm_ManualID)
     {
         // Validation
 
-        await _service.DeleteDmManualVersionAsync(dm_ManualID); // Await the async method
+        await _service.DeleteDmManualVersionAsync(dm_ManualID);
 
         return Ok();
     }
@@ -279,21 +279,21 @@ public class DMSController : ControllerBase
 
     // Edit Manual rights details
     [HttpPost("UpdateManualRights")]
-    public async Task<ActionResult> UpdateManualRights(ManualRightsDto manual) // Mark method as async
+    public async Task<ActionResult> UpdateManualRights(ManualRightsDto manual)
     {
         // Validation
 
-        await _service.UpdateManualRights(manual); // Await the async method
+        await _service.UpdateManualRights(manual);
 
         return Ok();
     }
 
     [HttpPost("AddToFavourite")]
-    public ActionResult AddToFavourite(long dm_ManualID, string userID) // Mark method as async
+    public ActionResult AddToFavourite(long dm_ManualID, string userID)
     {
         // Validation
 
-        _service.AddToFavouriteAsync(dm_ManualID, userID); // Await the async method
+        _service.AddToFavouriteAsync(dm_ManualID, userID);
 
         return Ok();
     }

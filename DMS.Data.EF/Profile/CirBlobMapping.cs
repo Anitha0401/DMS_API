@@ -10,7 +10,6 @@ internal class CirBlobMapping : Profile
 {
     public CirBlobMapping()
     {
-        // < From , To >
         CreateMap<CreateCircularDto, CIR_Blob>()
        .ForMember(d => d.Description, opt => opt.MapFrom(src => src.Description))
        .ForMember(d => d.FileName, opt => opt.MapFrom(src => src.FileName))

@@ -4,7 +4,6 @@ using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.DTO.Manuals;
-using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Query.Manuals;
 using MediatR;
@@ -60,7 +59,7 @@ public class DMSService : IDMSService
         // Initialize children for each manual
         foreach (var manual in manualList)
         {
-            if (manual.ParentID == -1) // Assuming 0 is the root parent ID
+            if (manual.ParentID == -1)
             {
                 root.Add(lookup[manual.DM_ManualID]);
             }
@@ -559,7 +558,6 @@ public class DMSService : IDMSService
         }
         catch (Exception ex)
         {
-            // Log or rethrow for debugging
             throw new Exception("Failed to add to favourites", ex);
         }
     }

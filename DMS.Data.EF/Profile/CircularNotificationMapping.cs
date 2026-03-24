@@ -10,7 +10,6 @@ internal class CircularNotificationMapping : Profile
 {
     public CircularNotificationMapping()
     {
-        // < From , To >
         CreateMap<VwCIRNotification, CircularsNotificationDto>();
     }
 }

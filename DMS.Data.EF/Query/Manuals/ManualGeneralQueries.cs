@@ -2,7 +2,6 @@
 using DMS.Data.EF.DTO;
 using DMS.Data.EF.DTO.Manuals;
 using DMS.Data.EF.Models;
-using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;

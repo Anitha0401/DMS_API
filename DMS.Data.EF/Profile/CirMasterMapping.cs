@@ -10,7 +10,6 @@ internal class CirMasterMapping : Profile
 {
     public CirMasterMapping()
     {
-        // < From , To >
         CreateMap<CreateCircularDto, CIR_Master>()
        .ForMember(d => d.CIR_CategoryID, opt => opt.MapFrom(src => src.CIR_CategoryID))
        .ForMember(d => d.CircularType, opt => opt.MapFrom(src => src.CircularType))

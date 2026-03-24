@@ -8,7 +8,6 @@ internal class ManualNotificationMapping : Profile
 {
     public ManualNotificationMapping()
     {
-        // < From , To >
         CreateMap<VwManualNotification, ManualNotificationDto>();
     }
 }

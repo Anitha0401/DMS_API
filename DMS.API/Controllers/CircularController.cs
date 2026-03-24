@@ -135,16 +135,15 @@ public class CircularController : ControllerBase
 
         var created = await _service.CreateCircularAsync(createdDto);
 
-        // Return created entity; adjust Created location as needed.
         return Created(string.Empty, created);
     }
 
     [HttpPost("AddToFavourite")]
-    public ActionResult AddToFavourite(long cir_MasterID, string circularType, string userID) // Mark method as async
+    public ActionResult AddToFavourite(long cir_MasterID, string circularType, string userID)
     {
         // Validation
 
-        _service.AddToFavouriteAsync(cir_MasterID, circularType, userID); // Await the async method
+        _service.AddToFavouriteAsync(cir_MasterID, circularType, userID);
 
         return Ok();
     }

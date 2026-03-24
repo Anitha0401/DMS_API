@@ -1,4 +1,4 @@
-﻿namespace DMS.Data.EF.Models.DTO;
+﻿namespace DMS.Data.EF.DTO.Manuals;
 
 public partial class Manual_SimpleDetails
 {

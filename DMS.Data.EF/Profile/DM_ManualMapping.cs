@@ -8,7 +8,6 @@ internal class DM_ManualMapping : Profile
 {
     public DM_ManualMapping()
     {
-        // < From , To >
         CreateMap<CreateManualDto, DmManual>()
         .ForMember(d => d.ManualCode, opt => opt.MapFrom(src => src.ManualCode))
         .ForMember(d => d.ManualName, opt => opt.MapFrom(src => src.ManualName))

@@ -1,4 +1,4 @@
-﻿namespace DMS.Data.EF.Models.DTO;
+﻿namespace DMS.Data.EF.DTO.Circulars;
 
 public class CircularsChart
 {

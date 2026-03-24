@@ -1,5 +1,4 @@
 ﻿using DMS.Data.EF.DTO.Manuals;
-using DMS.Data.EF.Models.DTO;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.EntityFrameworkCore;
 
@@ -210,7 +209,7 @@ public partial class DmsContext : DbContext
         modelBuilder.Entity<Manual_TreeviewDto>(eb =>
         {
             eb.HasNoKey();
-            eb.ToView(null); // prevents EF from expecting a database view/table
+            eb.ToView(null);
         });
 
         modelBuilder.Entity<Manual_TreeviewEntity>(eb =>

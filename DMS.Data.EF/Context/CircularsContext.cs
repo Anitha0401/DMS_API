@@ -1,6 +1,5 @@
 ﻿using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;
@@ -147,13 +146,13 @@ public partial class CircularsContext : DbContext
         modelBuilder.Entity<CircularsChart>(eb =>
         {
             eb.HasNoKey();
-            eb.ToView(null); // prevent EF expecting a DB view/table
+            eb.ToView(null);
         });
 
         modelBuilder.Entity<Circulars_TreeviewDto>(eb =>
         {
             eb.HasNoKey();
-            eb.ToView(null); // prevents EF from expecting a database view/table
+            eb.ToView(null);
         });
 
         modelBuilder.Entity<CIR_TreeviewEntity>(eb =>
@@ -161,7 +160,6 @@ public partial class CircularsContext : DbContext
             eb.HasNoKey();
             eb.ToView(null);
         });
-
 
         OnModelCreatingPartial(modelBuilder);
     }

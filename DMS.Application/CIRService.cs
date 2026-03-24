@@ -70,12 +70,12 @@ public class CIRService : ICIRService
 
         var root = new List<Circulars_TreeviewDto>();
 
-        // Initialize children for each manual
+        // Initialize children for each CIR
         foreach (var cir in uniqueList)
         {
             var currentKey = $"{cir.CIR_CategoryID}-{cir.CIR_MasterID}";
 
-            if (cir.ParentID == -1) // Assuming 0 is the root parent ID
+            if (cir.ParentID == -1)
             {
                 if (lookup.TryGetValue(currentKey, out var node))
                     root.Add(node);
@@ -365,7 +365,6 @@ public class CIRService : ICIRService
         }
         catch (Exception ex)
         {
-            // Log or rethrow for debugging
             throw new Exception("Failed to add to favourites", ex);
         }
     }
