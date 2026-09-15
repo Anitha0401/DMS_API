@@ -1,14 +1,10 @@
-﻿using Microsoft.EntityFrameworkCore;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace DMS.Data.EF.DTO.OtherDocument;
+﻿namespace DMS.Data.EF.DTO.OtherDocument;
 
 public partial class OtherDocument_LogDto
 {
-    public long CIR_OtherDocument_LogID { get; set; }
+    public long OtherDocument_LogID { get; set; }
 
-    public long CIR_OtherDocumentID { get; set; }
+    public long OtherDocumentMasterID { get; set; }
 
     public DateTime? Logdate { get; set; }
 

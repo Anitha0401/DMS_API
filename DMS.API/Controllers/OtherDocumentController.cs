@@ -19,33 +19,33 @@ public class OtherDocumentController : ControllerBase
     }
 
     [HttpGet("GetTypes")]
-    public async Task<ActionResult<List<CIR_OtherDocument_Type>>> GetTypes(bool includeInactive = false)
+    public async Task<ActionResult<List<OtherDocument_Type>>> GetTypes(bool includeInactive = false)
     {
         _logger.LogInformation("Get OtherDocument types (includeInactive={includeInactive})", includeInactive);
-        var types = await _service.GetTypesAsync(includeInactive);
+        var types = await _service.GetDocumentTypesAsync(includeInactive);
         return Ok(types);
     }
 
     [HttpGet("GetRecentOtherDocuments")]
-    public async Task<ActionResult<List<Vw_CIR_OtherDocument>>> GetRecentOtherDocuments(int limit = 10)
+    public async Task<ActionResult<List<Vw_OtherDocument_MasterBlob>>> GetRecentOtherDocuments(int limit = 10)
     {
         _logger.LogInformation("Get recent OtherDocuments (limit={limit})", limit);
         var list = await _service.GetRecentOtherDocumentsAsync(limit);
         return Ok(list);
     }
 
-    [HttpGet("GetOtherDocumentDetails/{otherDocumentId}")]
-    public async Task<ActionResult<Vw_CIR_OtherDocument>> GetOtherDocumentDetails(long otherDocumentId)
+    [HttpGet("GetOtherDocumentDetails/{otherDocumentMasterId}")]
+    public async Task<ActionResult<Vw_OtherDocument_MasterBlob>> GetOtherDocumentDetails(long otherDocumentMasterId)
     {
-        _logger.LogInformation("Get OtherDocument details (id={otherDocumentId})", otherDocumentId);
-        var details = await _service.GetOtherDocumentDetailsAsync(otherDocumentId);
+        _logger.LogInformation("Get OtherDocument details (id={otherDocumentMasterId})", otherDocumentMasterId);
+        var details = await _service.GetOtherDocumentDetailsAsync(otherDocumentMasterId);
         if (details == null)
             return NotFound();
         return Ok(details);
     }
 
     [HttpPost("AddOtherDocument")]
-    public async Task<ActionResult<long>> AddOtherDocument([FromBody] OtherDocumentDto model)
+    public async Task<ActionResult<long>> AddOtherDocument([FromBody] CreateOtherDocumentDto model)
     {
         if (model is null)
             return BadRequest("Payload is required.");
@@ -62,9 +62,9 @@ public class OtherDocumentController : ControllerBase
     }
 
     [HttpDelete("RemoveTempOtherDocument")]
-    public async Task<IActionResult> RemoveTempOtherDocument(long otherDocumentId)
+    public async Task<IActionResult> RemoveTempOtherDocument(long otherDocumentMasterId)
     {
-        await _service.RemoveTempOtherDocumentAsync(otherDocumentId);
+        await _service.RemoveTempOtherDocumentAsync(otherDocumentMasterId);
         return Ok();
     }
 }

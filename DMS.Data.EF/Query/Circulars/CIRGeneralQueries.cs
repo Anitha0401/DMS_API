@@ -1,12 +1,11 @@
 ﻿using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System.Data;
 
-namespace DMS.Data.EF.Query;
+namespace DMS.Data.EF.Query.Circulars;
 
 public class CIRGeneralQueries : ICIRGeneralQueries
 {
@@ -81,7 +80,7 @@ public class CIRGeneralQueries : ICIRGeneralQueries
         {
             var result = await _dbContext
                                 .Set<CIRRecentList>()
-                                .FromSqlInterpolated($"EXEC GetRecentCirculars @CircularType = {circularType}, @Limit = {limit}")
+                                .FromSqlInterpolated($"EXEC GetCIR_RecentList @CircularType = {circularType}, @Limit = {limit}")
                                 .AsNoTracking()
                                 .ToListAsync();
 

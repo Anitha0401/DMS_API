@@ -1,7 +1,4 @@
-﻿using AutoMapper;
-using DMS.Data.EF.Context;
-using DMS.Data.EF.DTO.Manuals;
-using DMS.Data.EF.Models;
+﻿using DMS.Data.EF.Context;
 using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Query.Manuals;
 using MediatR;

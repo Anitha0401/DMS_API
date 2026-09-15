@@ -1,5 +1,4 @@
-﻿namespace DMS.Data.EF.Models.DTO;
-
+﻿namespace DMS.Data.EF.DTO.Circulars;
 public class CircularUserAckDto
 {
     public long CIR_UserAckID { get; set; }

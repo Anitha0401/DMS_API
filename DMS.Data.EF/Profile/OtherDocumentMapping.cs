@@ -1,19 +1,15 @@
 ﻿using AutoMapper;
-using DMS.Data.EF.DTO.Circulars;
-using DMS.Data.EF.DTO.Manuals;
 using DMS.Data.EF.DTO.OtherDocument;
-using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Models.OtherDocument;
 
 namespace DMS.Data.EF.Mapping;
 
-internal class Cir_OtherDocumentMapping : Profile
+internal class OtherDocumentMapping : Profile
 {
-    public Cir_OtherDocumentMapping()
+    public OtherDocumentMapping()
     {
-        CreateMap<CreateOtherDocumentDto, CIR_OtherDocument>()
-       .ForMember(d => d.CIR_OtherDocument_TypeID, opt => opt.MapFrom(src => src.CIR_OtherDocument_TypeID))
+        CreateMap<CreateOtherDocumentDto, OtherDocumentMaster>()
+       .ForMember(d => d.OtherDocument_TypeID, opt => opt.MapFrom(src => src.OtherDocument_TypeID))
        .ForMember(d => d.DocumentNumber, opt => opt.MapFrom(src => src.DocumentNumber))
        .ForMember(d => d.Reference, opt => opt.MapFrom(src => src.Reference))
        .ForMember(d => d.DocumentTitle, opt => opt.MapFrom(src => src.DocumentTitle))

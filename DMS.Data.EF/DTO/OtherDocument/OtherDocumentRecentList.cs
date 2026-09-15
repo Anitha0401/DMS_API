@@ -1,9 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
-namespace DMS.Data.EF.Models.Circulars;
+namespace DMS.Data.EF.DTO.OtherDocument;
 
 [Keyless]
-public class CIRRecentList
+public class OtherDocumentRecentList
 {
     public long CIR_MasterID { get; set; }
 

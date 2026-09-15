@@ -2,9 +2,9 @@
 
 public partial class OtherDocumentDetailsDto
 {
-    public long CIR_OtherDocumentID { get; set; }
+    public long OtherDocumentMasterID { get; set; }
 
-    public long? CIR_OtherDocument_BlobID { get; set; }
+    public long? OtherDocument_BlobID { get; set; }
 
     public string Master_Origin { get; set; } = null!;
 
@@ -16,7 +16,7 @@ public partial class OtherDocumentDetailsDto
 
     public string DocumentType { get; set; } = null!;
 
-    public long? CIR_OtherDocument_TypeID { get; set; }
+    public long? OtherDocument_TypeID { get; set; }
 
     public string DocumentNumber { get; set; } = null!;
 

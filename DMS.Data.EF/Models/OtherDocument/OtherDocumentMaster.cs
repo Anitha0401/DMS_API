@@ -4,12 +4,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Data.EF.Models.OtherDocument;
 
-[Table("CIR_OtherDocument")]
-public partial class CIR_OtherDocument
+[Table("OtherDocumentMaster")]
+public partial class OtherDocumentMaster
 {
     [Key]
-    [Column("CIR_OtherDocumentID")]
-    public long CIR_OtherDocumentID { get; set; }
+    [Column("OtherDocumentMasterID")]
+    public long OtherDocumentMasterID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;
@@ -17,8 +17,8 @@ public partial class CIR_OtherDocument
     [Column("VesselID")]
     public int VesselID { get; set; }
 
-    [Column("CIR_OtherDocument_TypeID")]
-    public int? CIR_OtherDocument_TypeID { get; set; }
+    [Column("OtherDocument_TypeID")]
+    public int? OtherDocument_TypeID { get; set; }
 
     [StringLength(50)]
     public string DocumentNumber { get; set; } = null!;
@@ -42,5 +42,18 @@ public partial class CIR_OtherDocument
     public string? UploadedBy { get; set; }
 
     public int? IsDeleted { get; set; }
+
+    [StringLength(50)]
+    public string? CreatedBy { get; set; }
+
+    [Column(TypeName = "datetime")]
+    public DateTime? CreatedDate { get; set; }
+
+    [StringLength(50)]
+    public string? ModifiedBy { get; set; }
+
+    [Column(TypeName = "datetime")]
+    public DateTime? ModifiedDate { get; set; }
+
 
 }

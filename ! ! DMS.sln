@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS.API", "DMS.API\DMS.API.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS.Application", "DMS.Application\DMS.Application.csproj", "{0EF60C21-4BFA-733F-2DAF-BC463C9C7ADC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS.Data.EF", "DMS.Data.EF\DMS.Data.EF.csproj", "{FC2F572B-CA9B-3C1B-B5D4-EF0DFB349297}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DMS.Infrastructure", "DMS.Data.EF\DMS.Infrastructure.csproj", "{FC2F572B-CA9B-3C1B-B5D4-EF0DFB349297}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

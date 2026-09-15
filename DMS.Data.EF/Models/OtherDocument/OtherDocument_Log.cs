@@ -4,12 +4,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Data.EF.Models.OtherDocument;
 
-[Table("CIR_OtherDocument_Log")]
-public partial class CIR_OtherDocument_Log
+[Table("OtherDocument_Log")]
+public partial class OtherDocument_Log
 {
     [Key]
-    [Column("CIR_OtherDocument_LogID")]
-    public long CIR_OtherDocument_LogID { get; set; }
+    [Column("OtherDocument_LogID")]
+    public long OtherDocument_LogID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;
@@ -17,8 +17,8 @@ public partial class CIR_OtherDocument_Log
     [Column("VesselID")]
     public int VesselID { get; set; }
 
-    [Column("CIR_OtherDocumentID")]
-    public long? CIR_OtherDocumentID { get; set; }
+    [Column("OtherDocumentMasterID")]
+    public long? OtherDocumentMasterID { get; set; }
 
     [Column(TypeName = "datetime")]
     public DateTime? LogDate { get; set; }

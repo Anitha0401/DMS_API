@@ -1,4 +1,4 @@
-﻿namespace DMS.API.Dto;
+﻿namespace DMS.Data.EF.DTO;
 
 public class UserLogin
 {

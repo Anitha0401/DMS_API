@@ -4,15 +4,9 @@ using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
-using DMS.Data.EF.Models.Manuals;
-using DMS.Data.EF.Query;
-using DMS.Data.EF.Query.Manuals;
+using DMS.Data.EF.Query.Circulars;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using System.Numerics;
-using System.Text.RegularExpressions;
-using System.Threading;
 
 namespace DMS.Application;
 

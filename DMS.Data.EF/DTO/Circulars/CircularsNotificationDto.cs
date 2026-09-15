@@ -2,7 +2,7 @@
 
 public class CircularsNotificationDto : CircularsBaseDto
 {
-    public required long ManualNotificationId { get; set; }
+    public required long CIRNotificationId { get; set; }
 
     public string NotificationType { get; set; } = string.Empty;
 

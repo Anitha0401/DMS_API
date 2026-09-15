@@ -2,7 +2,7 @@
 
 public class EditOtherDocumentDto : OtherDocumentBaseDto
 {
-    public required long CIR_OtherDocument_TypeID { get; set; }
+    public required long OtherDocument_TypeID { get; set; }
     public string? CIR_Number { get; set; }
 
     public string AllowedUserToAck { get; set; } = string.Empty;

@@ -2,9 +2,9 @@
 
 public class CreateOtherDocumentDto
 {
-    public long CIR_OtherDocumentID { get; set; }
+    public long OtherDocumentMasterID { get; set; }
 
-    public long CIR_OtherDocument_TypeID { get; set; }
+    public long OtherDocument_TypeID { get; set; }
 
     public string? DocumentNumber { get; set; }
 

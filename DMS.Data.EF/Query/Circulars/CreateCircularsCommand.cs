@@ -1,8 +1,7 @@
 ﻿using DMS.Data.EF.DTO.Circulars;
-using DMS.Data.EF.DTO.Manuals;
 using MediatR;
 
-namespace DMS.Data.EF.Query.Manuals;
+namespace DMS.Data.EF.Query.Circulars;
 
 public class CreateCircularsCommand : IRequest<long>
 {

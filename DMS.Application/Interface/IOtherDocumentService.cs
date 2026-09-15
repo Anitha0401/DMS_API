@@ -5,10 +5,15 @@ namespace DMS.Application.Interface;
 
 public interface IOtherDocumentService
 {
-    Task<List<CIR_OtherDocument_Type>> GetTypesAsync(bool includeInactive = false);
-    Task<List<DMS.Data.EF.Models.OtherDocument.Vw_CIR_OtherDocument>> GetRecentOtherDocumentsAsync(int limit = 10);
-    Task<DMS.Data.EF.Models.OtherDocument.Vw_CIR_OtherDocument?> GetOtherDocumentDetailsAsync(long otherDocumentId);
+    Task<List<OtherDocument_Type>> GetDocumentTypesAsync(bool includeInactive = false);
+
+    Task<List<Vw_OtherDocument_MasterBlob>> GetRecentOtherDocumentsAsync(int limit = 10);
+
+    Task<Vw_OtherDocument_MasterBlob?> GetOtherDocumentDetailsAsync(long otherDocumentMasterId);
+
     Task<long> InsertOtherDocumentRecordAsync();
-    Task RemoveTempOtherDocumentAsync(long otherDocumentId);
-    Task<long> AddOtherDocumentAsync(OtherDocumentDto model);
+
+    Task RemoveTempOtherDocumentAsync(long otherDocumentMasterId);
+
+    Task<long> AddOtherDocumentAsync(CreateOtherDocumentDto model);
 }

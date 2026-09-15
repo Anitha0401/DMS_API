@@ -1,6 +1,5 @@
 ﻿using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
 
 namespace DMS.Application.Interface;
 

@@ -3,12 +3,12 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Data.EF.Models.OtherDocument;
 
-[Table("CIR_OtherDocument_Type")]
-public partial class CIR_OtherDocument_Type
+[Table("OtherDocument_Type")]
+public partial class OtherDocument_Type
 {
     [Key]
-    [Column("CIR_OtherDocument_TypeID")]
-    public int CIR_OtherDocument_TypeID { get; set; }
+    [Column("OtherDocument_TypeID")]
+    public int OtherDocument_TypeID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;

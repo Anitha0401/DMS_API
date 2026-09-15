@@ -1,7 +1,7 @@
 ﻿using DMS.Application.Interface;
 using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
+using DMS.Data.EF.Models;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.AspNetCore.Mvc;
 

@@ -1,5 +1,4 @@
-﻿using DMS.API.Dto;
-using DMS.Application.Interface;
+﻿using DMS.Application.Interface;
 using DMS.Data.EF.DTO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;

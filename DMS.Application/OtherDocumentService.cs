@@ -1,7 +1,10 @@
 using DMS.Application.Interface;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.DTO.OtherDocument;
 using DMS.Data.EF.Models.OtherDocument;
+using DMS.Data.EF.Query.Circulars;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -11,16 +14,18 @@ public class OtherDocumentService : IOtherDocumentService
 {
     private readonly OtherDocumentsContext _dbContext;
     private readonly ILogger<OtherDocumentService> _logger;
+    private readonly IMediator _mediator;
 
-    public OtherDocumentService(OtherDocumentsContext context, ILogger<OtherDocumentService> logger)
+    public OtherDocumentService(OtherDocumentsContext context, ILogger<OtherDocumentService> logger, IMediator mediator)
     {
         _dbContext = context;
         _logger = logger;
+        _mediator = mediator;
     }
 
-    public async Task<List<CIR_OtherDocument_Type>> GetTypesAsync(bool includeInactive = false)
+    public async Task<List<OtherDocument_Type>> GetDocumentTypesAsync(bool includeInactive = false)
     {
-        var query = _dbContext.CIR_OtherDocument_Type.AsQueryable();
+        var query = _dbContext.OtherDocument_Type.AsQueryable();
 
         if (!includeInactive)
             query = query.Where(t => (t.IsActive ?? 1) == 1);
@@ -31,97 +36,77 @@ public class OtherDocumentService : IOtherDocumentService
             .ToListAsync();
     }
 
-    public async Task<List<Vw_CIR_OtherDocument>> GetRecentOtherDocumentsAsync(int limit = 10)
+    public async Task<List<Vw_OtherDocument_MasterBlob>> GetRecentOtherDocumentsAsync(int limit = 10)
     {
-        return await _dbContext.Vw_CIR_OtherDocument
+        return await _dbContext.Vw_OtherDocument
             .OrderByDescending(v => v.UploadedOn)
             .Take(limit)
             .AsNoTracking()
             .ToListAsync();
     }
 
-    public async Task<Vw_CIR_OtherDocument?> GetOtherDocumentDetailsAsync(long otherDocumentId)
+    public async Task<Vw_OtherDocument_MasterBlob?> GetOtherDocumentDetailsAsync(long otherDocumentMasterID)
     {
-        return await _dbContext.Vw_CIR_OtherDocument
+        return await _dbContext.Vw_OtherDocument
             .AsNoTracking()
-            .FirstOrDefaultAsync(v => v.CIR_OtherDocumentID == otherDocumentId);
+            .FirstOrDefaultAsync(v => v.OtherDocumentMasterID == otherDocumentMasterID);
     }
 
     public async Task<long> InsertOtherDocumentRecordAsync()
     {
         try
         {
-            var nextId = (_dbContext.CIR_OtherDocument
-                             .Select(m => (long?)m.CIR_OtherDocumentID)
+            var nextId = (_dbContext.OtherDocumentMaster
+                             .Select(m => (long?)m.OtherDocumentMasterID)
                              .Max() ?? 0) + 1;
 
             var entity = new OtherDocumentDto
             {
-                CIR_OtherDocumentID = nextId,
+                OtherDocumentMasterID = nextId,
                 DocumentTitle = string.Empty,
                 DocumentNumber = string.Empty,
                 VesselID = -1,
                 UploadedOn = DateTime.UtcNow
             };
 
-            // _dbContext.CIR_OtherDocument.Add(entity);
+            // _dbContext.OtherDocument.Add(entity);
             await _dbContext.SaveChangesAsync();
 
-            return entity.CIR_OtherDocumentID;
+            return entity.OtherDocumentMasterID;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to insert CIR_OtherDocument record.");
+            _logger.LogError(ex, "Failed to insert OtherDocument record.");
             throw;
         }
     }
 
-    public async Task RemoveTempOtherDocumentAsync(long otherDocumentId)
+    public async Task<long> AddOtherDocumentAsync(CreateOtherDocumentDto model)
+    {
+        if (model is null)
+            throw new ArgumentNullException(nameof(model));
+
+        var result = await _mediator.Send(new CreateOtherDocumentCommand(model));
+        return result;
+    }
+
+    public async Task RemoveTempOtherDocumentAsync(long otherDocumentMasterID)
     {
         try
         {
-            var entity = await _dbContext.CIR_OtherDocument
-                            .Where(e => e.CIR_OtherDocumentID == otherDocumentId)
+            var entity = await _dbContext.OtherDocumentMaster
+                            .Where(e => e.OtherDocumentMasterID == otherDocumentMasterID)
                             .FirstOrDefaultAsync();
 
             if (entity != null)
             {
-                _dbContext.CIR_OtherDocument.Remove(entity);
+                _dbContext.OtherDocumentMaster.Remove(entity);
                 await _dbContext.SaveChangesAsync();
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to remove CIR_OtherDocument record with id {OtherDocumentId}", otherDocumentId);
-            // swallow intentionally to match existing pattern, rethrow if you prefer
-        }
-    }
-
-    public async Task<long> AddOtherDocumentAsync(OtherDocumentDto model)
-    {
-        if (model is null)
-            throw new ArgumentNullException(nameof(model));
-
-        try
-        {
-            if (model.CIR_OtherDocumentID == 0)
-            {
-                model.CIR_OtherDocumentID = (_dbContext.CIR_OtherDocument
-                                                .Select(m => (long?)m.CIR_OtherDocumentID)
-                                                .Max() ?? 0) + 1;
-            }
-
-            model.UploadedOn ??= DateTime.UtcNow;
-
-            //_dbContext.CIR_OtherDocument.Add(model);
-            await _dbContext.SaveChangesAsync();
-
-            return model.CIR_OtherDocumentID;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to add CIR_OtherDocument.");
-            throw;
+            _logger.LogError(ex, "Failed to remove OtherDocument record with id {OtherDocumentMasterID}", otherDocumentMasterID);
         }
     }
 }

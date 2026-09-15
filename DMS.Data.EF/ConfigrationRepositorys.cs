@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.Query;
+﻿using DMS.Data.EF.Query.Circulars;
 using DMS.Data.EF.Query.Manuals;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +11,7 @@ public static class ConfigrationRepositorys
     {
         service.AddScoped<ManualGeneralQueries>();
         service.AddScoped<CIRGeneralQueries>();
+        service.AddScoped<OtherDocumentGeneralQueries>();
         service.BaseDBDependencyRegister(configuration);
 
         return service;

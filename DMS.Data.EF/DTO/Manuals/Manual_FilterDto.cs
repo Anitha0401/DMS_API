@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 
-namespace DMS.Data.EF.Models.Manuals;
+namespace DMS.Data.EF.DTO.Manuals;
 
 public class Manual_FilterDto
 {

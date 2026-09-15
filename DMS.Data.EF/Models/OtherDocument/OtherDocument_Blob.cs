@@ -1,19 +1,18 @@
 using Microsoft.EntityFrameworkCore;
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Data.EF.Models.OtherDocument;
 
-[Table("CIR_OtherDocument_Blob")]
-public partial class CIR_OtherDocument_Blob
+[Table("OtherDocument_Blob")]
+public partial class OtherDocument_Blob
 {
     [Key]
-    [Column("CIR_OtherDocument_BlobID")]
-    public long CIR_OtherDocument_BlobID { get; set; }
+    [Column("OtherDocument_BlobID")]
+    public long OtherDocument_BlobID { get; set; }
 
-    [Column("CIR_OtherDocumentID")]
-    public long CIR_OtherDocumentID { get; set; }
+    [Column("OtherDocumentMasterID")]
+    public long OtherDocumentMasterID { get; set; }
 
     [StringLength(3)]
     public string Origin { get; set; } = null!;

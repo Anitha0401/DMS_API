@@ -1,8 +1,7 @@
 ﻿using DMS.Data.EF.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models.DTO;
 
-namespace DMS.Data.EF.Query;
+namespace DMS.Data.EF.Query.Circulars;
 
 public interface ICIRGeneralQueries
 {
