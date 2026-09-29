@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.DTO;
+﻿using DMS.Application.DTO;
 
 namespace DMS.Application.Interface;
 

@@ -1,8 +1,6 @@
-﻿using DMS.Application.Interface;
-using DMS.Data.EF.DTO.Circulars;
+﻿using DMS.Application.DTO.Circulars;
+using DMS.Application.Interface;
 using DMS.Data.EF.Models.Circulars;
-using DMS.Data.EF.Models;
-using DMS.Data.EF.Models.Manuals;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;
@@ -13,9 +11,9 @@ namespace DMS.API.Controllers;
 public class CircularController : ControllerBase
 {
     private readonly ICIRService _service;
-    private readonly ILogger<DMSController> _logger;
+    private readonly ILogger<CircularController> _logger;
 
-    public CircularController(ICIRService service, ILogger<DMSController> logger)
+    public CircularController(ICIRService service, ILogger<CircularController> logger)
     {
         _service = service;
         _logger = logger;
@@ -136,6 +134,19 @@ public class CircularController : ControllerBase
         var created = await _service.CreateCircularAsync(createdDto);
 
         return Created(string.Empty, created);
+    }
+
+    [HttpPut("EditCircular")]
+    public async Task<ActionResult<long>> EditCircular([FromBody] EditCircularDto editDto)
+    {
+        if (editDto is null)
+            return BadRequest("Circular payload is required.");
+
+        _logger.LogInformation("Edit Circular (CIR_MasterID={CIR_MasterID})", editDto.CIR_MasterID);
+
+        var updatedId = await _service.UpdateCircularAsync(editDto);
+
+        return Ok(updatedId);
     }
 
     [HttpPost("AddToFavourite")]

@@ -1,5 +1,5 @@
 ﻿using DMS.Application.Interface;
-using DMS.Data.EF.DTO;
+using DMS.Application.DTO;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;

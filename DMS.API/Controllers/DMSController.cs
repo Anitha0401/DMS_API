@@ -1,5 +1,5 @@
 ﻿using DMS.Application.Interface;
-using DMS.Data.EF.DTO.Manuals;
+using DMS.Application.DTO.Manuals;
 using DMS.Data.EF.Models.Manuals;
 using Microsoft.AspNetCore.Mvc;
 

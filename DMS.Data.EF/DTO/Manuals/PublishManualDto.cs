@@ -1,5 +1,0 @@
-﻿namespace DMS.Data.EF.DTO.Manuals;
-
-public class PublishManualDto : ManualBaseDto
-{
-}

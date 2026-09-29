@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.DTO.Circulars;
+﻿using DMS.Application.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
 
 namespace DMS.Application.Interface;
@@ -35,4 +35,6 @@ public interface ICIRService
     public Task<long> CreateCircularAsync(CreateCircularDto createDto);
 
     public Task AddToFavouriteAsync(long cir_MasterID, string circularType, string userID);
+
+    public Task<long> UpdateCircularAsync(EditCircularDto editDto);
 }

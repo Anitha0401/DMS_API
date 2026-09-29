@@ -84,6 +84,9 @@ public static class AddServiceExtension
         services.AddDbContext<GeneralContext>(options =>
             options.UseSqlServer(configValue));
 
+        services.AddDbContext<OtherDocumentsContext>(options =>
+            options.UseSqlServer(configValue));
+
         DBConnectionString dBConnectionStringOption = new(configValue);
         dBConnectionStringOption.DefaultConnection = configValue;
         services.AddSingleton(dBConnectionStringOption);

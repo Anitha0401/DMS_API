@@ -1,5 +1,6 @@
+using DMS.Application;
+using DMS.Application.DTO.OtherDocument;
 using DMS.Application.Interface;
-using DMS.Data.EF.DTO.OtherDocument;
 using DMS.Data.EF.Models.OtherDocument;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,11 +20,27 @@ public class OtherDocumentController : ControllerBase
     }
 
     [HttpGet("GetTypes")]
-    public async Task<ActionResult<List<OtherDocument_Type>>> GetTypes(bool includeInactive = false)
+    public async Task<ActionResult<List<OtherDocument_Type>>> GetTypes()
     {
-        _logger.LogInformation("Get OtherDocument types (includeInactive={includeInactive})", includeInactive);
-        var types = await _service.GetDocumentTypesAsync(includeInactive);
+        _logger.LogInformation("Get OtherDocument types");
+        var types = await _service.GetDocumentTypesAsync();
         return Ok(types);
+    }
+
+    [HttpGet("GetDocuments")]
+    public async Task<ActionResult<List<Vw_OtherDocument_MasterBlob>>> GetDocuments(int? vesselId = null, string? documentType = null)
+    {
+        _logger.LogInformation("Get OtherDocuments (vesselId={vesselId}, documentType={documentType})", vesselId, documentType);
+        var list = await _service.GetDocumentsAsync(vesselId, documentType);
+        return Ok(list);
+    }
+
+    // GET api/OtherDocument/nextnumber/{typeId}
+    [HttpGet("nextnumber/{typeId:long}")]
+    public async Task<IActionResult> GetNextNumber(long typeId)
+    {
+        var number = await _service.GetNextDocumentNumberAsync(typeId);
+        return Ok(new { documentNumber = number });
     }
 
     [HttpGet("GetRecentOtherDocuments")]

@@ -1,0 +1,12 @@
+namespace DMS.Application.DTO.OtherDocument;
+
+public partial class OtherDocument_TypeDto
+{
+    public int OtherDocument_TypeID { get; set; }
+
+    public string DocumentCode { get; set; } = null!;
+
+    public string? DocumentType { get; set; }
+
+    public int SortOrder { get; set; }
+}

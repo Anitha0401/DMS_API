@@ -1,5 +1,5 @@
 ﻿using DMS.Application.Interface;
-using DMS.Data.EF.DTO;
+using DMS.Application.DTO;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
