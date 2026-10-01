@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models.OtherDocument;
@@ -91,9 +91,9 @@ namespace DMS.Data.EF.Handler
 
                 return otherDocument.OtherDocumentMasterID;
             }
-            catch (Exception err)
+            catch (Exception)
             {
-                throw err;
+                throw;
             }
         }
     }

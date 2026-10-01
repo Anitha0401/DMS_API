@@ -7,8 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DMS.API.Controllers;
 
 [Route("api/[controller]")]
-[ApiController]
-public class OtherDocumentController : ControllerBase
+public class OtherDocumentController : DmsControllerBase
 {
     private readonly IOtherDocumentService _service;
     private readonly ILogger<OtherDocumentController> _logger;

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -61,4 +61,8 @@ public partial class HqUser
 
     [Column(TypeName = "datetime")]
     public DateTime? DateDisabled { get; set; }
+
+    /// <summary>ASP.NET Core PasswordHasher hash. Added by Database/001_HQ_Users_PasswordHash.sql.</summary>
+    [StringLength(200)]
+    public string? PasswordHash { get; set; }
 }

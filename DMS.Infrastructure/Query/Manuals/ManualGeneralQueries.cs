@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.Context;
+using DMS.Data.EF.Context;
 using DMS.Application.DTO;
 using DMS.Data.EF.Models;
 using DMS.Data.EF.Models.Manuals;
@@ -33,6 +33,18 @@ public class ManualGeneralQueries : IManualGeneralQueries
                             .ToListAsync();
 
         return result ?? new List<Manual_TreeviewEntity>();
+    }
+
+    /// <summary>Tree limited to manuals matching a dashboard/menu link, plus their parents (IsMatch = 0).</summary>
+    public async Task<List<Manual_TreeviewFilteredEntity>> GetDmManualTreeviewFilteredAsync(string userID, string calledMode)
+    {
+        var result = await _dbContext
+                            .DmManual_TreeviewFiltered
+                            .FromSqlInterpolated($"EXEC GetManual_TreeViewList_Filtered @UserID = {userID}, @CalledMode = {calledMode}")
+                            .AsNoTracking()
+                            .ToListAsync();
+
+        return result ?? new List<Manual_TreeviewFilteredEntity>();
     }
 
     public async Task<List<ManualVersionDetailsDto>> GetDmManualVersionList(long dm_ManualID)
@@ -180,7 +192,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
         catch (Exception ex)
         {
             // Log or rethrow for debugging
-            throw new Exception("Failed to add to notification", ex);
+            throw;
         }
     }
 

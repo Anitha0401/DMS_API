@@ -36,6 +36,8 @@ public class EditCircularDto : CircularsBaseDto
 
     public string CalledMode { get; set; } = string.Empty;
     
+    // Ranks: accepts ["Master", ...] or "Master, Chief Engineer" (what the form sends).
+    [System.Text.Json.Serialization.JsonConverter(typeof(StringOrListConverter))]
     public List<string> AllowedUserToAck { get; set; } = new List<string>();
 
     public List<int> VesselIdList { get; set; } = new List<int>();

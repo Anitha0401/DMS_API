@@ -26,7 +26,7 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            await HandleExceptionAsync(context, ex, logger);
+             await HandleExceptionAsync(context, ex, logger);
         }
     }
 
@@ -66,10 +66,17 @@ public class ExceptionHandlingMiddleware
 
             logger.LogWarning(ex, $"{result.ErrorMessage} - {stack}");
         }
-        else if (ex is ArgumentNullException)
+        else if (ex is KeyNotFoundException)
+        {
+            result.Code = StatusCodes.Status404NotFound;
+            result.ErrorMessage = ex.Message;
+
+            logger.LogWarning(ex, $"{result.ErrorMessage} - {stack}");
+        }
+        else if (ex is ArgumentException or FormatException)
         {
             result.Code = StatusCodes.Status400BadRequest;
-            result.ErrorMessage = "Argument cannot be null";
+            result.ErrorMessage = ex is ArgumentNullException ? "Argument cannot be null" : ex.Message;
 
             logger.LogWarning(ex, $"{result.ErrorMessage} - {stack}");
         }
@@ -91,6 +98,7 @@ public class ExceptionHandlingMiddleware
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore
             });
         context.Response.ContentType = "application/json";
-        return context.Response.WriteAsJsonAsync(jsonResult);
+        // jsonResult is already JSON text; WriteAsJsonAsync would wrap it in quotes a second time.
+        return context.Response.WriteAsync(jsonResult);
     }
 }

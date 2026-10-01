@@ -6,8 +6,7 @@ using System.Security.Claims;
 namespace DMS.API.Controllers;
 
 [Route("api/[controller]")]
-[ApiController]
-public class UserController : ControllerBase
+public class UserController : DmsControllerBase
 {
     //For admin Only
     [HttpGet]
@@ -30,8 +29,8 @@ public class UserController : ControllerBase
             var userClaims = identity.Claims;
             return new UserModel
             {
-                UserId = userClaims.First(x => x.Type == ClaimTypes.NameIdentifier).Value,
-                Role = userClaims.First(x => x.Type == ClaimTypes.Role).Value
+                UserId = userClaims.First(x => x.Type == DMS.API.Auth.DmsClaims.UserId).Value,
+                Role = userClaims.First(x => x.Type == DMS.API.Auth.DmsClaims.Role).Value
             };
         }
         return null;

@@ -5,8 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DMS.API.Controllers;
 
 [Route("api/[controller]")]
-[ApiController]
-public class VesselController : ControllerBase
+public class VesselController : DmsControllerBase
 {
     private readonly IVesselService _service;
     private readonly ILogger<VesselController> _logger;
@@ -35,5 +34,21 @@ public class VesselController : ControllerBase
         var hqUsertList = await _service.GetVesselList();
 
         return Ok(hqUsertList);
+    }
+
+    /// <summary>Everything sent to one vessel (manuals, circulars/alerts, other documents) and how far it is acknowledged.</summary>
+    [HttpGet("GetVesselSyncItems")]
+    public async Task<ActionResult<List<VesselSyncItemDto>>> GetVesselSyncItems(int vesselId)
+    {
+        _logger.LogInformation("Get sync items for vessel {VesselId}", vesselId);
+        return Ok(await _service.GetVesselSyncItemsAsync(vesselId));
+    }
+
+    /// <summary>Sync runs for one vessel, newest first.</summary>
+    [HttpGet("GetVesselSyncHistory")]
+    public async Task<ActionResult<VesselSyncHistoryDto>> GetVesselSyncHistory(int vesselId)
+    {
+        _logger.LogInformation("Get sync history for vessel {VesselId}", vesselId);
+        return Ok(await _service.GetVesselSyncHistoryAsync(vesselId));
     }
 }

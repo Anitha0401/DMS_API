@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Application.DTO.Manuals;
 
@@ -12,6 +12,12 @@ public class Manual_TreeviewDto
     public TreeviewDataDto data { get; set; } = null!;
 
     public List<Manual_TreeviewDto> Children { get; set; } = new List<Manual_TreeviewDto>();
+
+    /// <summary>PrimeReact Tree reads this: false = node shown but cannot be selected.</summary>
+    public bool Selectable { get; set; } = true;
+
+    /// <summary>CSS class for the node; "tree-node-context" greys out parents shown only for context.</summary>
+    public string? ClassName { get; set; }
 }
 
 public class TreeviewDataDto
@@ -39,4 +45,7 @@ public class TreeviewDataDto
     public int IsFavourite { get; set; }
 
     public int IsMainTitle { get; set; }
+
+    /// <summary>False when the node is only shown as the parent of a filtered result.</summary>
+    public bool IsMatch { get; set; } = true;
 }

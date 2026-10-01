@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using DMS.Application.DTO.Circulars;
 using DMS.Application.Interface;
 using DMS.Data.EF.Constant;
@@ -8,7 +8,6 @@ using DMS.Data.EF.Query.Circulars;
 using DMS.Infrastructure.Query.Circulars;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using System.Data.Entity;
 using System.Threading;
 
 namespace DMS.Application;
@@ -252,7 +251,7 @@ public class CIRService : ICIRService
 
         if (result?.Circular == null)
         {
-            throw new Exception($"Circular with ID {cirMasterId} not found.");
+            throw new KeyNotFoundException($"Circular with ID {cirMasterId} not found.");
         }
 
         var circularDto = _mapper.Map<EditCircularDto>(result.Circular);
@@ -316,9 +315,9 @@ public class CIRService : ICIRService
 
             return cir_Master.CIR_MasterID;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to insert CIR_Master record", ex);
+            throw;
         }
     }
 
@@ -336,9 +335,9 @@ public class CIRService : ICIRService
                 await _dbContext.SaveChangesAsync();
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         { 
-            throw new Exception("Failed to remove CIR_Master record", ex);
+            throw;
         }
     }
 
@@ -379,9 +378,9 @@ public class CIRService : ICIRService
                 await _queries.AddNotification(cir_MasterID, "", ManualNotificationType.FAVOURITE, circularType + " added as Favourite for user - " + userID, "");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add to favourites", ex);
+            throw;
         }
     }
 
@@ -393,5 +392,16 @@ public class CIRService : ICIRService
         var result = await _mediator.Send(new UpdateCircularsCommand(editDto));
 
         return result;
+    }
+
+    public async Task<bool> MarkNotificationReadAsync(long notificationID)
+    {
+        var notification = await _dbContext.CIR_Notification
+                                .FirstOrDefaultAsync(n => n.CIR_NotificationID == notificationID);
+        if (notification == null) return false;
+
+        notification.IsRead = 1;
+        await _dbContext.SaveChangesAsync();
+        return true;
     }
 }

@@ -1,4 +1,4 @@
-﻿using DMS.Application.Interface;
+using DMS.Application.Interface;
 using DMS.Data.EF.Context;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -35,5 +35,24 @@ public class HQUserService : IHQUserService
                                .Distinct()
                                .ToListAsync();
         return result;
+    }
+
+    public async Task<HqLoginUser?> GetUserForLoginAsync(string userId)
+    {
+        return await _dbContext.HqUsers
+            .AsNoTracking()
+            .Where(u => u.UserId == userId && (u.IsDisabled == null || u.IsDisabled == 0))
+            .Select(u => new HqLoginUser(u.UserId, u.UserName, u.Role, u.Email, u.PasswordHash))
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task<bool> SetPasswordHashAsync(string userId, string passwordHash)
+    {
+        var user = await _dbContext.HqUsers.FirstOrDefaultAsync(u => u.UserId == userId);
+        if (user == null) return false;
+
+        user.PasswordHash = passwordHash;
+        await _dbContext.SaveChangesAsync();
+        return true;
     }
 }

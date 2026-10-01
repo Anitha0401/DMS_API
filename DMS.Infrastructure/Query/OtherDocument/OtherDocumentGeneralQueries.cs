@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.Context;
+using DMS.Data.EF.Context;
 using DMS.Application.DTO.Circulars;
 using DMS.Application.DTO.OtherDocument;
 using DMS.Data.EF.Models.Circulars;
@@ -34,9 +34,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<OtherDocumentList>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve OtherDocument list", ex);
+            throw;
         }
     }
 
@@ -52,9 +52,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<OtherDocumentChart>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve OtherDocument vessel chart data", ex);
+            throw;
         }
     }
 
@@ -70,9 +70,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<OtherDocumentRecentList>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve recent OtherDocumentculars", ex);
+            throw;
         }
     }
 
@@ -89,9 +89,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<VwOtherDocumentNotification>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR notifications", ex);
+            throw;
         }
     }
 
@@ -119,9 +119,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
             _dbContext.OtherDocument_Log.Add(docLog);
             await _dbContext.SaveChangesAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add OtherDocument log", ex);
+            throw;
         }
     }
 
@@ -150,9 +150,9 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
 
             await _dbContext.SaveChangesAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add to notification", ex);
+            throw;
         }
     }
 

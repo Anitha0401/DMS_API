@@ -1,4 +1,4 @@
-﻿using DMS.Application.DTO.Circulars;
+using DMS.Application.DTO.Circulars;
 using DMS.Application.DTO.Manuals;
 
 namespace DMS.Application.Interface;
@@ -6,6 +6,9 @@ namespace DMS.Application.Interface;
 public interface IDMSService
 {
     public Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync(string userID);
+
+    /// <summary>Tree with only the manuals matching calledMode; their parents are included but not selectable.</summary>
+    public Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync(string userID, string? calledMode);
 
     public Task<List<Manual_FilterDto>> GetManualListBasedOnCalledModeAsync(string calledMode, string userID);
     
@@ -59,4 +62,8 @@ public interface IDMSService
     public Task DeleteDmManualVersionAsync(long dm_ManualID);
 
     public Task AddToFavouriteAsync(long dm_ManualID, string userID);
+
+    public Task<bool> MarkNotificationReadAsync(long notificationID);
+
+    public Task<List<ManualVersionHistoryDto>> GetManualVersionHistoryAsync(long dm_ManualID);
 }

@@ -7,9 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Logging\**" />
+    <EmbeddedResource Remove="Logging\**" />
+    <None Remove="Logging\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AutoMapper" Version="16.2.0" />
     <PackageReference Include="MediatR" Version="14.2.0" />
-    <PackageReference Include="Microsoft.AspNet.Identity.EntityFramework" Version="2.2.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -20,14 +25,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Logging\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="DMS.Data.EF.csproj" />
   </ItemGroup>
 
   <ItemGroup>

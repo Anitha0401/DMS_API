@@ -8,6 +8,8 @@ public interface IManualGeneralQueries
 {
     public Task<List<Manual_TreeviewEntity>> GetDmManualTreeviewAsync(string userID);
 
+    public Task<List<Manual_TreeviewFilteredEntity>> GetDmManualTreeviewFilteredAsync(string userID, string calledMode);
+
     public Task<List<ManualVersionDetailsDto>> GetDmManualVersionList(long dm_ManualID);
 
     public Task<List<ManualDetails>> GetUserActionManualList(string userID, string calledMode);

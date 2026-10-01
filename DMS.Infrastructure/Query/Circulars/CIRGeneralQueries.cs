@@ -1,4 +1,4 @@
-﻿using DMS.Data.EF.Context;
+using DMS.Data.EF.Context;
 using DMS.Application.DTO.Circulars;
 using DMS.Data.EF.Models.Circulars;
 using Microsoft.EntityFrameworkCore;
@@ -32,9 +32,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<CIR_TreeviewEntity>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR treeview data", ex);
+            throw;
         }
     }
 
@@ -50,9 +50,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<CIRMasterList>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR master list", ex);
+            throw;
         }
     }
 
@@ -68,9 +68,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<CircularsChart>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR category chart data", ex);
+            throw;
         }
     }
 
@@ -86,9 +86,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<CIRRecentList>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve recent circulars", ex);
+            throw;
         }
     }
 
@@ -112,9 +112,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return dashboard;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR dashboard counts", ex);
+            throw;
         }
     }
 
@@ -131,9 +131,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result ?? new List<VwCIRNotification>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve CIR notifications", ex);
+            throw;
         }
     }
 
@@ -161,7 +161,14 @@ public class CIRGeneralQueries : ICIRGeneralQueries
             {
                 var vslId = Convert.ToInt64(vsl.VesselID);
 
-                foreach (var ack in ackVsl)
+                // Only the ranks required for this vessel. VesselID -1 means "all vessels".
+                // (Before, every vessel was listed with every rank, so a circular sent to one
+                // vessel showed all vessels in Acknowledgment Status.)
+                var ackForVessel = ackVsl.Where(a => a.VesselID == vslId || a.VesselID == -1)
+                                         .GroupBy(a => a.UserRank)
+                                         .Select(g => g.First());
+
+                foreach (var ack in ackForVessel)
                 {
                     userAckByVsl.TryGetValue((vslId, ack.UserRank), out var ua);
 
@@ -189,9 +196,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to retrieve vessel ack list for circular", ex);
+            throw;
         }
     }
 
@@ -219,9 +226,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
             _dbContext.CIR_Log.Add(manualLog);
             await _dbContext.SaveChangesAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add CIR log", ex);
+            throw;
         }
     }
 
@@ -250,9 +257,9 @@ public class CIRGeneralQueries : ICIRGeneralQueries
 
             await _dbContext.SaveChangesAsync();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add to notification", ex);
+            throw;
         }
     }
 }

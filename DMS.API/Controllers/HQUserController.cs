@@ -4,8 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DMS.API.Controllers;
 
 [Route("api/[controller]")]
-[ApiController]
-public class HQUserController : ControllerBase
+public class HQUserController : DmsControllerBase
 {
     private readonly IHQUserService _service;
     private readonly ILogger<HQUserController> _logger;

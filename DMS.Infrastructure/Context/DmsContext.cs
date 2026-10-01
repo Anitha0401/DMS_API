@@ -15,6 +15,8 @@ public partial class DmsContext : DbContext
 
     public virtual DbSet<Manual_TreeviewEntity> DmManual_Treeview { get; set; } = null!;
 
+    public virtual DbSet<Manual_TreeviewFilteredEntity> DmManual_TreeviewFiltered { get; set; } = null!;
+
     public virtual DbSet<Manual_Content> DmManualContent { get; set; } = null!;
     
     public virtual DbSet<ManualVersionDetailsDto> DmManualVersionList { get; set; } = null!;
@@ -213,6 +215,13 @@ public partial class DmsContext : DbContext
         });
 
         modelBuilder.Entity<Manual_TreeviewEntity>(eb =>
+        {
+            eb.HasNoKey();
+            eb.ToView(null);
+        });
+
+        // Keyless type that only reads GetManual_TreeViewList_Filtered.
+        modelBuilder.Entity<Manual_TreeviewFilteredEntity>(eb =>
         {
             eb.HasNoKey();
             eb.ToView(null);

@@ -1,8 +1,10 @@
-﻿using DMS.Data.EF;
+using DMS.Data.EF;
 using DMS.Data.EF.Context;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using System.Text;
+using DMS.API.Auth;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Identity.Web;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using System.Net.Mime;
@@ -19,6 +21,8 @@ public static class AddServiceExtension
         // Load configuration files
         builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
         builder.Configuration.AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+        if (builder.Environment.IsDevelopment())
+            builder.Configuration.AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true);
         builder.Configuration.AddEnvironmentVariables();
 
         // Configure logging provider
@@ -29,7 +33,6 @@ public static class AddServiceExtension
         builder.Logging.AddFilter("Microsoft", LogLevel.Warning); // For Microsoft.* namespaces
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning); // For ASP.NET Core
         builder.Logging.AddFilter("System", LogLevel.Warning); // For System.* namespaces
-        builder.Logging.AddFilter("YourApp.Namespace", LogLevel.Trace); // For your custom namespace
 
         return builder;
     }
@@ -50,8 +53,6 @@ public static class AddServiceExtension
 
     public static void AddSwagger(IServiceCollection services)
     {
-        services.AddSession();
-        
         // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
         services.AddEndpointsApiExplorer();
         //services.AddSwaggerGen();
@@ -59,7 +60,6 @@ public static class AddServiceExtension
         //Add authentication in Swagger
         services.AddSwaggerGen(opt => {
             opt.SwaggerDoc("v1", new OpenApiInfo { Title = "DMS", Version = "v1" });
-            opt.AddServer(new OpenApiServer { Url = "https://localhost:7151" }); // or your actual URL
             opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { In = ParameterLocation.Header, Description = "Please enter token", Name = "Authorization", Type = SecuritySchemeType.Http, BearerFormat = "JWT", Scheme = "bearer" });
             opt.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() } });
         });
@@ -94,36 +94,41 @@ public static class AddServiceExtension
 
     public static void AddJWTToken(IServiceCollection services, IConfiguration configuration)
     {
-        var initialScope = configuration.GetValue<string>("AzureAd:Scope")?.Split(' ');
-        services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-           .AddMicrosoftIdentityWebApp(configuration.GetSection("AzureAd"))
-           .EnableTokenAcquisitionToCallDownstreamApi(initialScope)
-              .AddInMemoryTokenCaches();
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.Section));
+        var jwt = configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();
+        if (string.IsNullOrWhiteSpace(jwt.Key) || jwt.Key.Length < 32)
+            throw new InvalidOperationException("Jwt:Key must be at least 32 random characters. Set it with user-secrets or the Jwt__Key environment variable.");
 
-        //JWT Authentication
-        //services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        //    .AddJwtBearer(options => {
-        //    options.RequireHttpsMetadata = false;
-        //    options.SaveToken = true;
-        //    options.TokenValidationParameters = new TokenValidationParameters
-        //    {
-        //        ValidateIssuer = true,
-        //        ValidateAudience = true,
-        //        ValidateLifetime = true,
-        //        ValidateIssuerSigningKey = true,
-        //        ValidIssuer = configuration["Jwt:Issuer"],
-        //        ValidAudience = configuration["Jwt:Audience"],
-        //        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!))
-        //    };
-        //})
-
-        ////Add authentication in Swagger
-        //services.AddSwaggerGen(opt => {
-        //    opt.SwaggerDoc("v1", new OpenApiInfo { Title = "API Sample", Version = "v1" });
-        //    opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme { In = ParameterLocation.Header, Description = "Please enter token", Name = "Authorization", Type = SecuritySchemeType.Http, BearerFormat = "JWT", Scheme = "bearer" });
-        //    opt.AddSecurityRequirement(new OpenApiSecurityRequirement { { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() } });
-        //});
-
+        // One scheme: bearer tokens issued by LoginController. (The previous setup registered Azure AD as a
+        // cookie-based web app, which a React SPA calling the API cannot use.)
+        // Set every default explicitly, so [Authorize] always knows to challenge with JWT bearer
+        // ("No authenticationScheme was specified, and there was no DefaultChallengeScheme found").
+		//  services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        services.AddAuthentication(options =>
+        {
+            options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultForbidScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
+            .AddJwtBearer(options =>
+            {
+                options.MapInboundClaims = false;
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = jwt.Issuer,
+                    ValidAudience = jwt.Audience,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
+                    NameClaimType = DmsClaims.UserId,
+                    RoleClaimType = DmsClaims.Role,
+                    ClockSkew = TimeSpan.FromMinutes(2)
+                };
+            });
+        services.AddAuthorization();
     }
 
     public static void AddLogging(IServiceCollection services)
@@ -140,33 +145,30 @@ public static class AddServiceExtension
                                       | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.RequestQuery
                                       | Microsoft.AspNetCore.HttpLogging.HttpLoggingFields.ResponseStatusCode;
             configure.RequestHeaders.Add(HeaderNames.Referer);
-            configure.RequestHeaders.Add(HeaderNames.Authorization); // Log Authorization header
             configure.MediaTypeOptions.AddText(MediaTypeNames.Application.Json);
             configure.RequestBodyLogLimit = 4096; // Limit request body size to 4KB
             configure.ResponseBodyLogLimit = 4096; // Limit response body size to 4KB   
-            configure.RequestHeaders.Add("Authorization"); // Log Authorization header
             configure.ResponseHeaders.Add("X-Response-Time"); // Log custom response header
         });
     }
 
+    public const string CorsPolicy = "DmsFrontend";
+
     public static void AddCORS(this IServiceCollection services, IConfiguration configuration)
     {
+        // Only the frontend origins listed in AllowedCorsOrigin may call the API from a browser.
         var allowedCorsOrigin = configuration
             .GetSection("AllowedCorsOrigin")
-            .AsEnumerable()
-            .Where(x => !string.IsNullOrEmpty(x.Value))
-            .Select(x => x.Value)
-            .ToArray();
+            .Get<string[]>() ?? Array.Empty<string>();
 
         services.AddCors(options =>
         {
-            options.AddPolicy("AllowAllOrigins",
-                policy =>
-                {
-                    policy.AllowAnyOrigin()  // WithOrigins(allowedCorsOrigin)
-                          .AllowAnyMethod()
-                          .AllowAnyHeader();
-                });
+            options.AddPolicy(CorsPolicy, policy =>
+            {
+                policy.WithOrigins(allowedCorsOrigin)
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            });
         });
     }
 

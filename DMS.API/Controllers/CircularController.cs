@@ -5,10 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;
 
-//[Authorize]
 [Route("api/[controller]")]
-[ApiController]
-public class CircularController : ControllerBase
+public class CircularController : DmsControllerBase
 {
     private readonly ICIRService _service;
     private readonly ILogger<CircularController> _logger;
@@ -60,19 +58,19 @@ public class CircularController : ControllerBase
 
 
     [HttpGet("GetTreeViewCircularList")]
-    public async Task<ActionResult<List<Circulars_TreeviewDto>>> GetTreeViewManualList(string userId, string circularType)
+    public async Task<ActionResult<List<Circulars_TreeviewDto>>> GetTreeViewManualList(string? userId, string circularType)
     {
         _logger.LogInformation("Get Treeview Circular list");
-        var manualList = await _service.GetTreeViewCircularsListAsync(userId, circularType);
+        var manualList = await _service.GetTreeViewCircularsListAsync(CurrentUserId, circularType);
 
         return Ok(manualList);
     }
 
     [HttpGet("GetCIRMasterList")]
-    public async Task<ActionResult<List<CIRMasterList>>> GetCIRMasterList(string userId, long categoryId, string circularType)
+    public async Task<ActionResult<List<CIRMasterList>>> GetCIRMasterList(string? userId, long categoryId, string circularType)
     {
         _logger.LogInformation("Get CIR master list (categoryId={categoryId}, circularType={circularType})", categoryId, circularType);
-        var masters = await _service.GetCIRMasterListAsync(userId, categoryId, circularType);
+        var masters = await _service.GetCIRMasterListAsync(CurrentUserId, categoryId, circularType);
         return Ok(masters);
     }
 
@@ -150,20 +148,19 @@ public class CircularController : ControllerBase
     }
 
     [HttpPost("AddToFavourite")]
-    public ActionResult AddToFavourite(long cir_MasterID, string circularType, string userID)
+    public async Task<ActionResult> AddToFavourite(long cir_MasterID, string circularType, string? userID)
     {
-        // Validation
-
-        _service.AddToFavouriteAsync(cir_MasterID, circularType, userID);
-
+        await _service.AddToFavouriteAsync(cir_MasterID, circularType, CurrentUserId);
         return Ok();
     }
 
     // Mark notification as read
     [HttpPost("MarkNotificationRead")]
-    public async Task<IActionResult> MarkNotificationRead(long notificationID)
+    public async Task<IActionResult> MarkNotificationRead([FromQuery] long? notificationID,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] MarkNotificationReadRequest? body)
     {
-        // await _service.MarkAsRead(notificationID);
-        return Ok();
+        var id = notificationID ?? body?.NotificationId;
+        if (id is null) return BadRequest("notificationId is required.");
+        return await _service.MarkNotificationReadAsync(id.Value) ? NoContent() : NotFound();
     }
 }

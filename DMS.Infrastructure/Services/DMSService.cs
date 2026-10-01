@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using DMS.Application.Interface;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
@@ -33,47 +33,79 @@ public class DMSService : IDMSService
         if (manualList == null || !manualList.Any())
             throw new InvalidOperationException("No manuals found in the database.");
 
-        var lookup = manualList.ToDictionary(m => m.DM_ManualID, m => new Manual_TreeviewDto
-        {
-            Key = m.DM_ManualID,
-            Label = m.ManualNo + " - " + m.ManualName,
-            data = new TreeviewDataDto
-            {
-                DM_ManualID = m.DM_ManualID,
-                DM_ManualVersionID = m.DM_ManualVersionID,
-                ManualVersion = m.Version,
-                StatusString = m.StatusString,
-                Category = m.CategoryName,
-                LastUpdated = m.LastUpdated,
-                ParentID = m.ParentID,
-                ManualLevel = m.ManualLevel,
-                DM_StatusID = m.DM_StatusID,
-                IsActive = m.IsActive,
-                IsFavourite = m.IsFavourite,
-                IsMainTitle = m.IsMainTitle
-            }
-        });
+        return BuildTree(manualList.Select(m => (m, true)), keepOrphans: false);
+    }
 
-        var root = new List<Manual_TreeviewDto>();
+    /// <summary>Calling modes accepted from the links (dashboard and Manuals page). Anything else = All.</summary>
+    private static readonly Dictionary<string, string> TreeModes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["new"] = "New", ["NewDocuments"] = "New",
+        ["userfavorites"] = "Favourites", ["favorites"] = "Favourites", ["Favourites"] = "Favourites",
+        ["vsltoack"] = "VslToAck",
+        ["usertoack"] = "PendingMyAck", ["PendingMyAcknowledgement"] = "PendingMyAck",
+        ["pendingapproval"] = "PendingMyApproval", ["PendingMyApproval"] = "PendingMyApproval",
+        ["underreview"] = "PendingMyReview", ["PendingMyReview"] = "PendingMyReview",
+    };
 
-        // Initialize children for each manual
-        foreach (var manual in manualList)
+    public async Task<List<Manual_TreeviewDto>> GetTreeViewManualListAsync(string userID, string? calledMode)
+    {
+        if (string.IsNullOrWhiteSpace(calledMode) || !TreeModes.TryGetValue(calledMode.Trim(), out var mode))
+            return await GetTreeViewManualListAsync(userID);
+
+        // An empty result is normal here ("no favourites yet"), so no exception.
+        var rows = await _queries.GetDmManualTreeviewFilteredAsync(userID, mode);
+        return BuildTree(rows.Select(r => (r.ToTreeRow(), r.IsMatch == 1)), keepOrphans: true);
+    }
+
+    private static List<Manual_TreeviewDto> BuildTree(IEnumerable<(Manual_TreeviewEntity Row, bool IsMatch)> rows, bool keepOrphans)
+    {
+        var list = rows.ToList();
+        var lookup = new Dictionary<long, Manual_TreeviewDto>();
+        foreach (var (m, isMatch) in list)
         {
-            if (manual.ParentID == -1)
+            lookup[m.DM_ManualID] = new Manual_TreeviewDto
             {
-                root.Add(lookup[manual.DM_ManualID]);
-            }
-            else if (lookup.ContainsKey(manual.ParentID))
-            {
-                var parent = lookup[manual.ParentID];
-                if (parent.Children == null)
+                Key = m.DM_ManualID,
+                Label = m.ManualNo + " - " + m.ManualName,
+                Selectable = isMatch,
+                ClassName = isMatch ? null : "tree-node-context",
+                data = new TreeviewDataDto
                 {
-                    parent.Children = new List<Manual_TreeviewDto>();
+                    DM_ManualID = m.DM_ManualID,
+                    DM_ManualVersionID = m.DM_ManualVersionID,
+                    ManualVersion = m.Version,
+                    StatusString = m.StatusString,
+                    Category = m.CategoryName,
+                    LastUpdated = m.LastUpdated,
+                    ParentID = m.ParentID,
+                    ManualLevel = m.ManualLevel,
+                    DM_StatusID = m.DM_StatusID,
+                    IsActive = m.IsActive,
+                    IsFavourite = m.IsFavourite,
+                    IsMainTitle = m.IsMainTitle,
+                    IsMatch = isMatch
                 }
-                parent.Children.Add(lookup[manual.DM_ManualID]);
-            }
+            };
         }
 
+        var root = new List<Manual_TreeviewDto>();
+        foreach (var (m, _) in list)
+        {
+            if (m.ParentID == -1)
+            {
+                root.Add(lookup[m.DM_ManualID]);
+            }
+            else if (lookup.TryGetValue(m.ParentID, out var parent))
+            {
+                parent.Children.Add(lookup[m.DM_ManualID]);
+            }
+            else if (keepOrphans)
+            {
+                // Filtered view: a match whose parent is missing (e.g. deleted) is still shown, at the top.
+                root.Add(lookup[m.DM_ManualID]);
+            }
+            // Full tree: same as before, a node whose parent is not in the list is left out.
+        }
         return root;
     }
 
@@ -556,9 +588,41 @@ public class DMSService : IDMSService
                 await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.FAVOURITE, "Manual added as Favourite for user - " + userID, "");
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            throw new Exception("Failed to add to favourites", ex);
+            throw;
         }
+    }
+
+    public async Task<bool> MarkNotificationReadAsync(long notificationID)
+    {
+        var notification = await _dbContext.DM_ManualNotification
+                                .FirstOrDefaultAsync(n => n.DM_ManualNotificationId == notificationID);
+        if (notification == null) return false;
+
+        notification.IsRead = 1;
+        await _dbContext.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<List<ManualVersionHistoryDto>> GetManualVersionHistoryAsync(long dm_ManualID)
+    {
+        return await _dbContext.DmManualVersions
+            .AsNoTracking()
+            .Where(v => v.DM_ManualID == dm_ManualID && (v.IsDisabled == null || v.IsDisabled == 0))
+            .OrderByDescending(v => v.CreatedDate)
+            .Select(v => new ManualVersionHistoryDto
+            {
+                DM_ManualVersionID = v.DM_ManualVersionID,
+                VersionNumber = v.Version,
+                CreatedBy = v.CreatedBy,
+                CreatedDate = v.CreatedDate,
+                PublishedBy = v.PublishedBy,
+                PublishedDate = v.PublishedDate,
+                ReleasedBy = v.ReleasedBy,
+                ReleasedDate = v.ReleasedDate,
+                IsActive = v.IsActive == 1
+            })
+            .ToListAsync();
     }
 }
