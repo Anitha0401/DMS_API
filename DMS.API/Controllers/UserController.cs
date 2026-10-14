@@ -36,6 +36,3 @@ public class UserController : DmsControllerBase
         return null;
     }
 }
-
-// https://www.c-sharpcorner.com/article/jwt-token-creation-authentication-and-authorization-in-asp-net-core-6-0-with-po/
-// https://www.c-sharpcorner.com/article/how-to-implement-jwt-authentication-in-web-api-using-net-6-0-asp-net-core/

@@ -39,6 +39,7 @@ public static class ConfigrationRepositorys
         service.AddScoped<ICIRService, CIRService>();
         service.AddScoped<IOtherDocumentService, OtherDocumentService>();
         service.AddScoped<IVesselService, VesselService>();
+        service.AddScoped<ISyncService, SyncService>();
         service.AddScoped<IHQUserService, HQUserService>();
         service.AddScoped<ILoginService, LoginService>();
         return service;

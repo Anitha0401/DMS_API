@@ -8,9 +8,12 @@ public interface IVesselService
 
     public Task<List<VesselListDto>> GetVesselList();
 
-    /// <summary>Manuals, circulars/alerts and other documents assigned to one vessel, with acknowledgement progress.</summary>
+    /// <summary>Manuals and circulars/alerts assigned to one vessel, with acknowledgement progress and whether the vessel has them.</summary>
     public Task<List<VesselSyncItemDto>> GetVesselSyncItemsAsync(int vesselId);
 
-    /// <summary>Sync runs for one vessel (empty, SyncInstalled = false, until the HQ sync add-on is installed).</summary>
+    /// <summary>Sync calls for one vessel (dbo.Sync_Log) and its sync key state. SyncInstalled = false until Database/005_VesselSync.sql is run.</summary>
     public Task<VesselSyncHistoryDto> GetVesselSyncHistoryAsync(int vesselId);
+
+    /// <summary>Fleet overview for the sync monitor: link state, queued items and pending alerts per vessel.</summary>
+    public Task<VesselSyncMonitorDto> GetSyncMonitorAsync();
 }

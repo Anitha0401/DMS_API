@@ -8,11 +8,13 @@ namespace DMS.API.Controllers;
 public class VesselController : DmsControllerBase
 {
     private readonly IVesselService _service;
+    private readonly ISyncService _sync;
     private readonly ILogger<VesselController> _logger;
   
-    public VesselController(IVesselService service, ILogger<VesselController> logger)
+    public VesselController(IVesselService service, ISyncService sync, ILogger<VesselController> logger)
     {
         _service = service;
+        _sync = sync;
         _logger = logger;
     }
 
@@ -50,5 +52,40 @@ public class VesselController : DmsControllerBase
     {
         _logger.LogInformation("Get sync history for vessel {VesselId}", vesselId);
         return Ok(await _service.GetVesselSyncHistoryAsync(vesselId));
+    }
+
+    /// <summary>Sync monitor: one row per vessel with link state, items waiting to go out and alerts not acknowledged.</summary>
+    [HttpGet("GetSyncMonitor")]
+    public async Task<ActionResult<VesselSyncMonitorDto>> GetSyncMonitor()
+    {
+        _logger.LogInformation("Get sync monitor");
+        return Ok(await _service.GetSyncMonitorAsync());
+    }
+
+    /// <summary>
+    /// Creates a new sync key for a vessel (replacing any earlier key). The key is returned once and not stored:
+    /// put it in the vessel's appsettings.json as Sync:VesselKey.
+    /// </summary>
+    [HttpPost("GenerateSyncKey")]
+    public async Task<ActionResult<VesselSyncKeyDto>> GenerateSyncKey(int vesselId)
+    {
+        if (!await _sync.IsInstalledAsync())
+            return BadRequest("Vessel sync is not set up in the office database (run Database/005_VesselSync.sql).");
+
+        var key = await _sync.GenerateVesselKeyAsync(vesselId, CurrentUserId);
+        _logger.LogInformation("Sync key generated for vessel {VesselId} by {UserId}", vesselId, CurrentUserId);
+        return Ok(new VesselSyncKeyDto { VesselID = vesselId, Key = key });
+    }
+
+    /// <summary>Sends everything to the vessel again on its next sync (the vessel also drops anything it should not have).</summary>
+    [HttpPost("RequestResync")]
+    public async Task<IActionResult> RequestResync(int vesselId)
+    {
+        if (!await _sync.IsInstalledAsync())
+            return BadRequest("Vessel sync is not set up in the office database (run Database/005_VesselSync.sql).");
+
+        await _sync.RequestResyncAsync(vesselId);
+        _logger.LogInformation("Full resync requested for vessel {VesselId} by {UserId}", vesselId, CurrentUserId);
+        return NoContent();
     }
 }

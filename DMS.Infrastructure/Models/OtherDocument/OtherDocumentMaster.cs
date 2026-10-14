@@ -18,7 +18,7 @@ public partial class OtherDocumentMaster
     public int VesselID { get; set; }
 
     [Column("OtherDocument_TypeID")]
-    public int? OtherDocument_TypeID { get; set; }
+    public long? OtherDocument_TypeID { get; set; }
 
     [StringLength(50)]
     public string DocumentNumber { get; set; } = null!;
@@ -43,10 +43,10 @@ public partial class OtherDocumentMaster
 
     public int? IsDeleted { get; set; }
 
-    [StringLength(50)]
+    [NotMapped]
     public string? CreatedBy { get; set; }
 
-    [Column(TypeName = "datetime")]
+    [NotMapped]
     public DateTime? CreatedDate { get; set; }
 
     [StringLength(50)]

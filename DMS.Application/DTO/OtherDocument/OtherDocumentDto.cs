@@ -8,7 +8,7 @@ public partial class OtherDocumentDto
 
     public int VesselID { get; set; }
 
-    public int? OtherDocument_TypeID { get; set; }
+    public long? OtherDocument_TypeID { get; set; }
 
     public string DocumentNumber { get; set; } = null!;
 

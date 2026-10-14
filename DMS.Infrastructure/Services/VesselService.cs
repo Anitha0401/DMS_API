@@ -14,14 +14,14 @@ public class VesselService : IVesselService
     private readonly ManualGeneralQueries _queries;
     private readonly DmsContext _dms;
     private readonly CircularsContext _circulars;
-    private readonly OtherDocumentsContext _otherDocs;
+    private readonly ISyncService _sync;
 
     public VesselService(GeneralContext context, IMediator mediator, ManualGeneralQueries queries,
-                         DmsContext dms, CircularsContext circulars, OtherDocumentsContext otherDocs)
+                         DmsContext dms, CircularsContext circulars, ISyncService sync)
     {
         _dms = dms;
         _circulars = circulars;
-        _otherDocs = otherDocs;
+        _sync = sync;
         _dbContext = context;
         _mediator = mediator;
         _queries = queries;
@@ -53,135 +53,359 @@ public class VesselService : IVesselService
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Vessel sync: what has been sent to a vessel, and the sync runs.
+    // Vessel sync: what has been sent to a vessel, the sync calls, and the fleet monitor.
+    // Other documents are not synced to vessels, so they are not listed here.
     // ---------------------------------------------------------------------------------------------
 
     public async Task<List<VesselSyncItemDto>> GetVesselSyncItemsAsync(int vesselId)
     {
+        // Everything is filtered in SQL against the vessel's assignment (EXISTS sub-queries), only the
+        // columns shown are read, and results are grouped once in memory. VesselID -1 means "all vessels".
         var items = new List<VesselSyncItemDto>();
 
-        // Circulars and alerts. VesselID -1 means "all vessels".
-        var cirToAck = await _circulars.CIR_ToAck_Vsl.AsNoTracking()
-            .Where(a => (a.VesselID == vesselId || a.VesselID == -1) && (a.IsActive ?? 1) == 1)
-            .Select(a => new { a.CIR_MasterID, a.UserRank })
-            .ToListAsync();
-        var cirIds = cirToAck.Select(a => a.CIR_MasterID).Distinct().ToList();
+        // Items given to this vessel by the one-time full copy (Database/008_Sync_FullCopy.sql),
+        // whether or not they are assigned. No ranks acknowledge them, so they show as "Sent".
+        var (fullCopyManuals, fullCopyCirculars) = await LoadFullCopyIdsAsync(vesselId);
 
-        if (cirIds.Count > 0)
+        // ---- Circulars and alerts ----
+        var cirAssigned = _circulars.CIR_ToAck_Vsl.AsNoTracking()
+            .Where(a => (a.VesselID == vesselId || a.VesselID == -1) && (a.IsActive ?? 1) == 1);
+
+        var cirRanks = (await cirAssigned.Select(a => new { a.CIR_MasterID, a.UserRank }).ToListAsync())
+            .ToLookup(a => a.CIR_MasterID, a => a.UserRank);
+
+        if (cirRanks.Count > 0 || fullCopyCirculars.Count > 0)
         {
             var masters = await _circulars.CIR_Master.AsNoTracking()
-                .Where(m => cirIds.Contains(m.CIR_MasterID) && (m.IsDeleted ?? 0) == 0 && m.Status != "Temp")
+                .Where(m => (m.IsDeleted ?? 0) == 0 && m.Status != "Temp" && m.Status != "Draft"
+                         && (cirAssigned.Any(a => a.CIR_MasterID == m.CIR_MasterID) || fullCopyCirculars.Contains(m.CIR_MasterID)))
+                .Select(m => new { m.CIR_MasterID, m.CIR_Number, m.Title, m.CircularType, m.ReleasedDate, m.DateIssued })
                 .ToListAsync();
-            var acks = await _circulars.Vw_CIR_VesselAck.AsNoTracking()
-                .Where(x => x.VesselID == vesselId && x.CIR_MasterID != null && cirIds.Contains(x.CIR_MasterID.Value))
-                .ToListAsync();
+
+            var cirReads = (await _circulars.Vw_CIR_VesselAck.AsNoTracking()
+                    .Where(x => x.VesselID == vesselId && x.DateRead != null && x.CIR_MasterID != null
+                             && (cirAssigned.Any(a => a.CIR_MasterID == x.CIR_MasterID) || fullCopyCirculars.Contains(x.CIR_MasterID.Value)))
+                    .Select(x => new { CIR_MasterID = x.CIR_MasterID!.Value, x.UserRank, x.DateRead })
+                    .ToListAsync())
+                .ToLookup(x => x.CIR_MasterID);
 
             foreach (var m in masters)
             {
-                var ranks = RankSet(cirToAck.Where(a => a.CIR_MasterID == m.CIR_MasterID).Select(a => a.UserRank));
-                var read = acks.Where(a => a.CIR_MasterID == m.CIR_MasterID && a.DateRead != null).ToList();
+                var read = cirReads[m.CIR_MasterID];
                 items.Add(Item(
-                    m.CircularType != null && m.CircularType.Trim().ToLower().StartsWith("alert") ? "Alert" : "Circular",
+                    IsAlert(m.CircularType) ? "Alert" : "Circular",
                     m.CIR_MasterID, m.CIR_Number, m.Title, null, null,
-                    m.ReleasedDate ?? m.DateIssued, ranks, read.Select(a => a.UserRank), read.Max(a => a.DateRead)));
+                    m.ReleasedDate ?? m.DateIssued, RankSet(cirRanks[m.CIR_MasterID]),
+                    read.Select(a => a.UserRank), read.Max(a => a.DateRead)));
             }
         }
 
-        // Manuals.
-        var manToAck = await _dms.DmManualToAckVsls.AsNoTracking()
-            .Where(a => (a.VesselID == vesselId || a.VesselID == -1) && (a.IsActive ?? 1) == 1)
-            .Select(a => new { a.DM_ManualID, a.UserRank })
-            .ToListAsync();
-        var manIds = manToAck.Select(a => a.DM_ManualID).Distinct().ToList();
+        // ---- Manuals with a released version ----
+        var manAssigned = _dms.DmManualToAckVsls.AsNoTracking()
+            .Where(a => (a.VesselID == vesselId || a.VesselID == -1) && (a.IsActive ?? 1) == 1);
 
-        if (manIds.Count > 0)
+        var manRanks = (await manAssigned.Select(a => new { a.DM_ManualID, a.UserRank }).ToListAsync())
+            .ToLookup(a => a.DM_ManualID, a => a.UserRank);
+
+        if (manRanks.Count > 0 || fullCopyManuals.Count > 0)
         {
-            var manuals = await _dms.DmManuals.AsNoTracking()
-                .Where(m => manIds.Contains(m.DM_ManualID) && (m.IsDeleted ?? 0) == 0)
+            // The newest active version of each manual, picked in SQL (NOT EXISTS a newer active one).
+            var latestVersions = _dms.DmManualVersions.AsNoTracking()
+                .Where(v => v.IsActive == 1
+                         && !_dms.DmManualVersions.Any(n => n.DM_ManualID == v.DM_ManualID && n.IsActive == 1
+                                                         && n.DM_ManualVersionID > v.DM_ManualVersionID));
+
+            // Manuals without a released version are not sent, so the inner join drops them.
+            var manuals = await (
+                    from m in _dms.DmManuals.AsNoTracking()
+                    join v in latestVersions on m.DM_ManualID equals v.DM_ManualID
+                    where (m.IsDeleted ?? 0) == 0
+                       && (manAssigned.Any(a => a.DM_ManualID == m.DM_ManualID) || fullCopyManuals.Contains(m.DM_ManualID))
+                    select new
+                    {
+                        m.DM_ManualID, m.ManualNo, m.ManualName, m.CreatedDate,
+                        v.DM_ManualVersionID, v.Version, v.ReleasedDate, v.PublishedDate,
+                    })
                 .ToListAsync();
-            var versions = await _dms.DmManualVersions.AsNoTracking()
-                .Where(v => manIds.Contains(v.DM_ManualID) && v.IsActive == 1)
-                .Select(v => new { v.DM_ManualID, v.DM_ManualVersionID, v.Version, v.ReleasedDate, v.PublishedDate })
-                .ToListAsync();
-            var acks = await _dms.DmManualUserAcks.AsNoTracking()
-                .Where(a => a.VesselID == vesselId && manIds.Contains(a.DM_ManualID))
-                .ToListAsync();
+
+            // Only acknowledgements of the current version count.
+            var manReads = (await _dms.DmManualUserAcks.AsNoTracking()
+                    .Where(a => a.VesselID == vesselId && a.DateRead != null
+                             && (manAssigned.Any(t => t.DM_ManualID == a.DM_ManualID) || fullCopyManuals.Contains(a.DM_ManualID))
+                             && latestVersions.Any(v => v.DM_ManualVersionID == a.DM_ManualVersionID))
+                    .Select(a => new { a.DM_ManualID, a.UserRank, a.DateRead })
+                    .ToListAsync())
+                .ToLookup(a => a.DM_ManualID);
 
             foreach (var m in manuals)
             {
-                var latest = versions.Where(v => v.DM_ManualID == m.DM_ManualID)
-                                     .OrderByDescending(v => v.DM_ManualVersionID).FirstOrDefault();
-                var ranks = RankSet(manToAck.Where(a => a.DM_ManualID == m.DM_ManualID).Select(a => a.UserRank));
-                // Only acknowledgements of the current version count.
-                var read = acks.Where(a => a.DM_ManualID == m.DM_ManualID && a.DateRead != null &&
-                                           (latest == null || a.DM_ManualVersionID == latest.DM_ManualVersionID)).ToList();
-                items.Add(Item("Manual", m.DM_ManualID, m.ManualNo, m.ManualName, latest?.Version, null,
-                    latest?.ReleasedDate ?? latest?.PublishedDate ?? m.CreatedDate,
-                    ranks, read.Select(a => a.UserRank), read.Max(a => a.DateRead)));
+                var read = manReads[m.DM_ManualID];
+                items.Add(Item("Manual", m.DM_ManualID, m.ManualNo, m.ManualName, m.Version, null,
+                    m.ReleasedDate ?? m.PublishedDate ?? m.CreatedDate,
+                    RankSet(manRanks[m.DM_ManualID]), read.Select(a => a.UserRank), read.Max(a => a.DateRead)));
             }
         }
 
-        // Other documents uploaded for this vessel (no acknowledgement).
-        var types = await _otherDocs.OtherDocument_Type.AsNoTracking()
-            .ToDictionaryAsync(t => t.OtherDocument_TypeID, t => t.DocumentType);
-        var docs = await _otherDocs.OtherDocumentMaster.AsNoTracking()
-            .Where(d => d.VesselID == vesselId && (d.IsDeleted ?? 0) == 0)
-            .ToListAsync();
-        foreach (var d in docs)
+        // Whether the vessel already has each item (needs the sync tables). Scoped to this one vessel.
+        if (items.Count > 0)
         {
-            types.TryGetValue(d.OtherDocument_TypeID ?? 0, out var typeName);
-            items.Add(Item("Other document", d.OtherDocumentMasterID, d.DocumentNumber, d.DocumentTitle, null, typeName,
-                d.UploadedOn ?? d.CreatedDate, new HashSet<string>(), Enumerable.Empty<string?>(), null));
+            var queuedByVessel = await _sync.GetQueuedItemsAsync(new[] { vesselId });
+            if (queuedByVessel.TryGetValue(vesselId, out var queued))
+            {
+                foreach (var i in items)
+                    i.Delivery = queued.Contains((i.ItemType == "Manual" ? "Manual" : "Circular", i.ItemID)) ? "Queued" : "On board";
+            }
         }
 
         return items.OrderByDescending(i => i.IssuedOn ?? DateTime.MinValue).ToList();
     }
 
+    /// <summary>Manual and circular IDs in dbo.Sync_FullCopyItem for the vessel (empty when the table does not exist).</summary>
+    private async Task<(List<long> Manuals, List<long> Circulars)> LoadFullCopyIdsAsync(int vesselId)
+    {
+        var manuals = new List<long>();
+        var circulars = new List<long>();
+        await WithConnectionAsync(async connection =>
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"IF OBJECT_ID('dbo.Sync_FullCopyItem', 'U') IS NOT NULL
+    SELECT ItemType, ItemID FROM dbo.Sync_FullCopyItem WHERE VesselID = @v;";
+            AddParameter(cmd, "@v", vesselId);
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var type = r.GetString(0).Trim();
+                if (type == "Manual") manuals.Add(r.GetInt64(1));
+                else if (type == "Circular") circulars.Add(r.GetInt64(1));
+            }
+        });
+        return (manuals, circulars);
+    }
+
     public async Task<VesselSyncHistoryDto> GetVesselSyncHistoryAsync(int vesselId)
     {
-        var result = new VesselSyncHistoryDto();
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
+        var result = new VesselSyncHistoryDto { SyncInstalled = await _sync.IsInstalledAsync() };
+        if (!result.SyncInstalled) return result;
+
+        await WithConnectionAsync(async connection =>
         {
-            using (var check = connection.CreateCommand())
+            using (var key = connection.CreateCommand())
             {
-                check.CommandText = "SELECT CASE WHEN OBJECT_ID('dbo.Sync_Package', 'U') IS NULL THEN 0 ELSE 1 END";
-                result.SyncInstalled = Convert.ToInt32(await check.ExecuteScalarAsync()) == 1;
+                key.CommandText = "SELECT CreatedUtc, CreatedBy, LastUsedUtc FROM dbo.Sync_VesselKey WHERE VesselID = @vesselId AND IsActive = 1";
+                AddParameter(key, "@vesselId", vesselId);
+                using var r = await key.ExecuteReaderAsync();
+                if (await r.ReadAsync())
+                {
+                    result.HasKey = true;
+                    result.KeyCreatedUtc = Utc(r.GetDateTime(0));
+                    result.KeyCreatedBy = r.IsDBNull(1) ? null : r.GetString(1);
+                    result.KeyLastUsedUtc = r.IsDBNull(2) ? null : Utc(r.GetDateTime(2));
+                }
             }
-            if (!result.SyncInstalled) return result;
 
             using var cmd = connection.CreateCommand();
-            cmd.CommandText = @"SELECT TOP 200 PackageId, Direction, FromVersion, ToVersion, RowsCount, Status, CreatedUtc, AppliedUtc, Error
-                                FROM dbo.Sync_Package WHERE VesselID = @vesselId ORDER BY CreatedUtc DESC";
-            var p = cmd.CreateParameter();
-            p.ParameterName = "@vesselId";
-            p.Value = vesselId;
-            cmd.Parameters.Add(p);
-
+            cmd.CommandText = @"SELECT TOP 200 SyncLogID, Direction, StartedUtc, FinishedUtc, ItemsCount, Status, Error
+                                FROM dbo.Sync_Log WHERE VesselID = @vesselId ORDER BY StartedUtc DESC, SyncLogID DESC";
+            AddParameter(cmd, "@vesselId", vesselId);
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                result.Packages.Add(new VesselSyncPackageDto
+                result.Entries.Add(new VesselSyncLogDto
                 {
-                    PackageId = reader.GetGuid(0),
+                    SyncLogID = reader.GetInt64(0),
                     Direction = reader.GetString(1),
-                    FromVersion = reader.GetInt64(2),
-                    ToVersion = reader.GetInt64(3),
-                    RowsCount = reader.GetInt32(4),
+                    StartedUtc = Utc(reader.GetDateTime(2)),
+                    FinishedUtc = reader.IsDBNull(3) ? null : Utc(reader.GetDateTime(3)),
+                    ItemsCount = reader.GetInt32(4),
                     Status = reader.GetString(5),
-                    CreatedUtc = reader.GetDateTime(6),
-                    AppliedUtc = reader.IsDBNull(7) ? null : reader.GetDateTime(7),
-                    Error = reader.IsDBNull(8) ? null : reader.GetString(8)
+                    Error = reader.IsDBNull(6) ? null : reader.GetString(6)
                 });
             }
-            return result;
-        }
-        finally
+        });
+        return result;
+    }
+
+    /// <summary>A vessel is "online" when it contacted the office within this many minutes (vessels check every 5 minutes).</summary>
+    private const int OnlineMinutes = 30;
+
+    private sealed record LinkInfo(DateTime? Contact, DateTime? Success, string? Status, string? Error,
+                                   int PendingOnShip, string? Activity, int? Progress, string? AppVersion);
+
+    public async Task<VesselSyncMonitorDto> GetSyncMonitorAsync()
+    {
+        var result = new VesselSyncMonitorDto { OnlineMinutes = OnlineMinutes };
+
+        var vessels = await _dbContext.VVessels.AsNoTracking()
+            .Where(v => (v.IsRetired ?? 0) == 0)
+            .OrderBy(v => v.VslName)
+            .Select(v => new { v.VesselID, v.VslCode, v.VslName, v.VslType, v.VslEmailAddress })
+            .ToListAsync();
+        var vesselIds = vessels.Select(v => v.VesselID).ToList();
+
+        // ---- What each vessel has been sent (whole fleet, a few queries in total) ----
+        var cirToAck = await _circulars.CIR_ToAck_Vsl.AsNoTracking()
+            .Where(a => (a.IsActive ?? 1) == 1)
+            .Select(a => new { a.CIR_MasterID, a.VesselID, a.UserRank })
+            .ToListAsync();
+        var cirIds = cirToAck.Select(a => a.CIR_MasterID).Distinct().ToList();
+        var cirMasters = cirIds.Count == 0 ? new() : await _circulars.CIR_Master.AsNoTracking()
+            .Where(m => cirIds.Contains(m.CIR_MasterID) && (m.IsDeleted ?? 0) == 0 && m.Status != "Temp" && m.Status != "Draft")
+            .Select(m => new { m.CIR_MasterID, m.CircularType })
+            .ToListAsync();
+        var cirReads = await _circulars.Vw_CIR_VesselAck.AsNoTracking()
+            .Where(x => x.CIR_MasterID != null && x.DateRead != null)
+            .Select(x => new { CIR_MasterID = x.CIR_MasterID!.Value, x.VesselID, x.UserRank })
+            .ToListAsync();
+
+        var manToAck = await _dms.DmManualToAckVsls.AsNoTracking()
+            .Where(a => (a.IsActive ?? 1) == 1)
+            .Select(a => new { a.DM_ManualID, a.VesselID, a.UserRank })
+            .ToListAsync();
+        var manIds = manToAck.Select(a => a.DM_ManualID).Distinct().ToList();
+        var liveManualIds = manIds.Count == 0 ? new List<long>() : await _dms.DmManuals.AsNoTracking()
+            .Where(m => manIds.Contains(m.DM_ManualID) && (m.IsDeleted ?? 0) == 0)
+            .Select(m => m.DM_ManualID)
+            .ToListAsync();
+        var latestVersions = (manIds.Count == 0 ? new() : await _dms.DmManualVersions.AsNoTracking()
+                .Where(v => manIds.Contains(v.DM_ManualID) && v.IsActive == 1)
+                .Select(v => new { v.DM_ManualID, v.DM_ManualVersionID })
+                .ToListAsync())
+            .GroupBy(v => v.DM_ManualID)
+            .ToDictionary(g => g.Key, g => g.Max(v => v.DM_ManualVersionID));
+        var manReads = await _dms.DmManualUserAcks.AsNoTracking()
+            .Where(a => a.DateRead != null)
+            .Select(a => new { a.DM_ManualID, a.DM_ManualVersionID, a.VesselID, a.UserRank })
+            .ToListAsync();
+
+        // ---- Link state and what the ships report (dbo.Sync_Vessel), and what is waiting to go out ----
+        result.SyncInstalled = await _sync.IsInstalledAsync();
+        var link = new Dictionary<int, LinkInfo>();
+        var hasKey = new HashSet<int>();
+        var queued = new Dictionary<int, HashSet<(string ItemType, long ItemId)>>();
+        if (result.SyncInstalled)
         {
-            if (openedHere) await connection.CloseAsync();
+            await WithConnectionAsync(async connection =>
+            {
+                using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = @"SELECT VesselID, LastContactUtc, LastSuccessUtc, LastStatus, LastError,
+                                               PendingOnShip, CurrentActivity, ProgressPercent, AppVersion
+                                        FROM dbo.Sync_Vessel";
+                    using var r = await cmd.ExecuteReaderAsync();
+                    while (await r.ReadAsync())
+                    {
+                        link[r.GetInt32(0)] = new LinkInfo(
+                            r.IsDBNull(1) ? null : Utc(r.GetDateTime(1)),
+                            r.IsDBNull(2) ? null : Utc(r.GetDateTime(2)),
+                            r.IsDBNull(3) ? null : r.GetString(3),
+                            r.IsDBNull(4) ? null : r.GetString(4),
+                            r.IsDBNull(5) ? 0 : r.GetInt32(5),
+                            r.IsDBNull(6) ? null : r.GetString(6),
+                            r.IsDBNull(7) ? null : r.GetInt32(7),
+                            r.IsDBNull(8) ? null : r.GetString(8));
+                    }
+                }
+                using (var cmd = connection.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT VesselID FROM dbo.Sync_VesselKey WHERE IsActive = 1";
+                    using var r = await cmd.ExecuteReaderAsync();
+                    while (await r.ReadAsync()) hasKey.Add(r.GetInt32(0));
+                }
+            });
+            queued = await _sync.GetQueuedItemsAsync(vesselIds);
         }
+
+        var now = DateTime.UtcNow;
+        var cirById = cirMasters.ToDictionary(m => m.CIR_MasterID);
+        var liveManuals = liveManualIds.Where(latestVersions.ContainsKey).ToHashSet();
+        // Lookups so each vessel only touches its own rows.
+        var cirByVessel = cirToAck.ToLookup(a => a.VesselID);
+        var manByVessel = manToAck.ToLookup(a => a.VesselID);
+        var cirReadLookup = cirReads.ToLookup(x => (x.CIR_MasterID, x.VesselID), x => x.UserRank);
+        var manReadLookup = manReads.ToLookup(x => (x.DM_ManualID, x.VesselID), x => (x.DM_ManualVersionID, x.UserRank));
+
+        foreach (var v in vessels)
+        {
+            link.TryGetValue(v.VesselID, out var l);
+
+            var row = new VesselSyncMonitorRow
+            {
+                VesselID = v.VesselID,
+                VslCode = v.VslCode,
+                VslName = v.VslName,
+                VslType = v.VslType,
+                VslEmail = v.VslEmailAddress,
+                LastContactUtc = l?.Contact,
+                LastSuccessUtc = l?.Success,
+                LastStatus = l?.Status,
+                LastError = l?.Error,
+                PendingOnShip = l?.PendingOnShip ?? 0,
+                CurrentActivity = l?.Activity,
+                ProgressPercent = l?.Progress,
+                AppVersion = l?.AppVersion,
+                HasKey = hasKey.Contains(v.VesselID),
+                ItemsQueued = queued.TryGetValue(v.VesselID, out var q) ? q.Count : 0,
+                Link = l?.Contact == null ? "Not connected"
+                     : (now - l.Contact.Value).TotalMinutes <= OnlineMinutes ? "Online" : "Offline"
+            };
+
+            // Circulars and alerts (VesselID -1 = all vessels)
+            foreach (var g in cirByVessel[v.VesselID].Concat(cirByVessel[-1]).GroupBy(a => a.CIR_MasterID))
+            {
+                if (!cirById.TryGetValue(g.Key, out var m)) continue;
+                row.ItemsTotal++;
+                var ranks = RankSet(g.Select(a => a.UserRank));
+                if (ranks.Count == 0) continue;
+                var read = RankSet(cirReadLookup[(g.Key, v.VesselID)]);
+                if (ranks.Any(r => !read.Contains(r)))
+                {
+                    row.AcksPending++;
+                    if (IsAlert(m.CircularType)) row.AlertsPending++;
+                }
+            }
+
+            // Manuals with a released version (only acknowledgements of the current version count)
+            foreach (var g in manByVessel[v.VesselID].Concat(manByVessel[-1]).GroupBy(a => a.DM_ManualID))
+            {
+                if (!liveManuals.Contains(g.Key)) continue;
+                var latest = latestVersions[g.Key];
+                row.ItemsTotal++;
+                var ranks = RankSet(g.Select(a => a.UserRank));
+                if (ranks.Count == 0) continue;
+                var read = RankSet(manReadLookup[(g.Key, v.VesselID)]
+                                       .Where(x => x.DM_ManualVersionID == latest)
+                                       .Select(x => x.UserRank));
+                if (ranks.Any(r => !read.Contains(r))) row.AcksPending++;
+            }
+
+            // Queued also counts parent manuals sent to complete the tree on board.
+            row.ItemsTotal = Math.Max(row.ItemsTotal, row.ItemsQueued);
+            result.Vessels.Add(row);
+        }
+
+        return result;
+    }
+
+    private static bool IsAlert(string? circularType) =>
+        circularType != null && circularType.Trim().StartsWith("alert", StringComparison.OrdinalIgnoreCase);
+
+    private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    private async Task WithConnectionAsync(Func<System.Data.Common.DbConnection, Task> work)
+    {
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try { await work(connection); }
+        finally { if (openedHere) await connection.CloseAsync(); }
+    }
+
+    private static void AddParameter(System.Data.Common.DbCommand cmd, string name, object value)
+    {
+        var p = cmd.CreateParameter();
+        p.ParameterName = name;
+        p.Value = value;
+        cmd.Parameters.Add(p);
     }
 
     private static HashSet<string> RankSet(IEnumerable<string?> ranks) =>
