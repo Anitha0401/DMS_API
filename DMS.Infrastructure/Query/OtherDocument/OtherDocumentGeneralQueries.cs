@@ -99,9 +99,7 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
     {
         try
         {
-            var otherDocument_LogID = (_dbContext.OtherDocument_Log
-                                    .Select(m => (long?)m.OtherDocument_LogID)
-                                    .Max() ?? 0) + 1;
+            var otherDocument_LogID = await _dbContext.NextIdAsync<OtherDocument_Log>();
 
             var docLog = new OtherDocument_Log
             {
@@ -129,11 +127,7 @@ public class OtherDocumentGeneralQueries : ICIRGeneralQueries
     {
         try
         {
-            var nextOtherDocument_NotificationID = _dbContext.OtherDocument_Notification
-                                              .Select(m => (long?)m.OtherDocument_NotificationID)
-                                              .Max() ?? 0;
-
-            nextOtherDocument_NotificationID = nextOtherDocument_NotificationID + 1;
+            var nextOtherDocument_NotificationID = await _dbContext.NextIdAsync<OtherDocument_Notification>();
 
             var notification = new OtherDocument_Notification();
             notification.OtherDocument_NotificationID = nextOtherDocument_NotificationID;

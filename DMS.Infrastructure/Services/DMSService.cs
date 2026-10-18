@@ -1,5 +1,6 @@
 using AutoMapper;
 using DMS.Application.Interface;
+using DMS.Data.EF;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Application.DTO.Circulars;
@@ -568,11 +569,7 @@ public class DMSService : IDMSService
         {
             if (!_dbContext.DmManualUserFavourites.Any(f => f.DM_ManualID == dm_ManualID && f.UserId == userID))
             {
-                var nextDM_ManualUserFavouriteID = _dbContext.DmManualUserFavourites
-                                                  .Select(m => (long?)m.DM_ManualUserFavouriteID)
-                                                  .Max() ?? 0;
-
-                nextDM_ManualUserFavouriteID = nextDM_ManualUserFavouriteID + 1;
+                var nextDM_ManualUserFavouriteID = await _dbContext.NextIdAsync<DmManualUserFavourite>();
 
                 var userFavourite = new DmManualUserFavourite();
                 userFavourite.DM_ManualUserFavouriteID = nextDM_ManualUserFavouriteID;

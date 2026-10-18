@@ -141,9 +141,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
 
     public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
     {
-        var dm_Manual_LogID = (_dbContext.DmManualLogs
-                                .Select(m => (long?)m.DmManualLogId)
-                                .Max() ?? 0) + 1;
+        var dm_Manual_LogID = await _dbContext.NextIdAsync<DmManualLog>();
 
         var manualLog = new DmManualLog
         {
@@ -167,11 +165,7 @@ public class ManualGeneralQueries : IManualGeneralQueries
     {
         try
         {
-            var nextDM_ManualNotificationID = _dbContext.DM_ManualNotification
-                                              .Select(m => (long?)m.DM_ManualNotificationId)
-                                              .Max() ?? 0;
-
-            nextDM_ManualNotificationID = nextDM_ManualNotificationID + 1;
+            var nextDM_ManualNotificationID = await _dbContext.NextIdAsync<DM_ManualNotification>();
 
             var manualNotification = new DM_ManualNotification();
             manualNotification.DM_ManualNotificationId = nextDM_ManualNotificationID;

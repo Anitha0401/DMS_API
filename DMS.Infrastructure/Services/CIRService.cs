@@ -1,6 +1,7 @@
 using AutoMapper;
 using DMS.Application.DTO.Circulars;
 using DMS.Application.Interface;
+using DMS.Data.EF;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models.Circulars;
@@ -301,9 +302,7 @@ public class CIRService : ICIRService
         try
         {
             var cir_Master = new CIR_Master();
-            cir_Master.CIR_MasterID = (_dbContext.CIR_Master
-                                     .Select(m => (long?)m.CIR_MasterID)
-                                     .Max() ?? 0) + 1;
+            cir_Master.CIR_MasterID = await _dbContext.NextIdAsync<CIR_Master>();
             cir_Master.Origin = "HQ";
             cir_Master.VesselID = -1;
             cir_Master.Status = "Temp";
@@ -358,11 +357,7 @@ public class CIRService : ICIRService
         {
             if (!_dbContext.CIR_UserFavourite.Any(f => f.CIR_MasterID == cir_MasterID && f.UserId == userID))
             {
-                var nextCIR_UserFavouriteID = _dbContext.CIR_UserFavourite
-                                                  .Select(m => (long?)m.CIR_UserFavouriteID)
-                                                  .Max() ?? 0;
-
-                nextCIR_UserFavouriteID = nextCIR_UserFavouriteID + 1;
+                var nextCIR_UserFavouriteID = await _dbContext.NextIdAsync<CIR_UserFavourite>();
 
                 var userFavourite = new CIR_UserFavourite();
                 userFavourite.CIR_UserFavouriteID = nextCIR_UserFavouriteID;

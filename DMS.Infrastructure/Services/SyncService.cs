@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DMS.Application.DTO.Sync;
 using DMS.Application.Interface;
+using DMS.Data.EF;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models.Circulars;
 using DMS.Data.EF.Models.Manuals;
@@ -26,7 +27,7 @@ namespace DMS.Application;
 /// differs from the key the vessel confirmed. A pull marks what it sends as pending; the vessel's next pull
 /// (its "since" = ServerTimeUtc of the pull it applied) confirms them. A lost response is simply sent again.
 /// </summary>
-public class SyncService : ISyncService
+public partial class SyncService : ISyncService
 {
     /// <summary>A first sync is sent in batches so one response never gets too big for a satellite link.</summary>
     private const int MaxItemsPerPull = 200;
@@ -231,7 +232,7 @@ WHEN NOT MATCHED THEN INSERT (VesselID, KeyHash, IsActive, CreatedUtc, CreatedBy
             pendingRows.Add((TypeCategories, 0, categoriesKey));
         }
 
-        // Fixed tables (DM_Status, DM_Settings, CIR_Setting, V_Vessel): copied whole, every row, only when changed.
+        // Fixed tables (DM_Status, DM_Settings, CIR_Settings, V_Vessel): copied whole, every row, only when changed.
         // They are small, so the version key is worked out on every pull; no trigger is needed.
         var fixedTables = await LoadFixedTablesAsync();
         var fixedKey = Hash(System.Text.Json.JsonSerializer.Serialize(fixedTables));
@@ -422,6 +423,196 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
     }
 
     // =========================================================================================
+    // Row-by-row sync (Database/010_Sync_ChangeLog.sql)
+    // =========================================================================================
+
+    private sealed record SyncTableInfo(string TableName, int SortOrder, string? BlobColumn, bool AllVessels, string? KeyColumn,
+        bool HasVesselColumn, List<string> Columns);
+
+    public async Task<SyncChangesResponse?> GetChangesAsync(int vesselId, int max)
+    {
+        var started = DateTime.UtcNow;
+        try
+        {
+            if (await ScalarAsync("SELECT OBJECT_ID('dbo.Sync_ChangeLog', 'U')") == null) return null;
+            max = Math.Clamp(max, 1, 2000);
+            var tables = await LoadSyncTablesAsync();
+
+            // The waiting rows, oldest first; one more than asked tells whether more are waiting.
+            var waiting = new List<(long Id, string Table, long Key)>();
+            await WithConnectionAsync(async connection =>
+            {
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = @"SELECT TOP (@take) SyncChangeID, TableName, KeyValue FROM dbo.Sync_ChangeLog
+                                     WHERE VesselID = @v AND DownloadedUtc IS NULL ORDER BY SyncChangeID";
+                AddParameter(cmd, "@take", max + 1);
+                AddParameter(cmd, "@v", vesselId);
+                using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync()) waiting.Add((r.GetInt64(0), r.GetString(1), r.GetInt64(2)));
+            });
+            var hasMore = waiting.Count > max;
+            if (hasMore) waiting.RemoveAt(waiting.Count - 1);
+
+            // One change per record, whatever happened to it in between: the ship gets it as it is now.
+            var changes = new List<SyncRowChange>();
+            foreach (var group in waiting.GroupBy(w => w.Table, StringComparer.OrdinalIgnoreCase))
+            {
+                var perKey = group.GroupBy(w => w.Key).ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+                if (!tables.TryGetValue(group.Key, out var info) || info.KeyColumn == null)
+                {
+                    // No longer synced (or no such table): sent as a removal the ship ignores, so it is confirmed.
+                    changes.AddRange(perKey.Select(k => new SyncRowChange
+                        { ChangeIds = k.Value, TableName = group.Key, Key = k.Key, Action = "D" }));
+                    continue;
+                }
+
+                var rows = await ReadRecordsAsync(info, perKey.Keys.ToList());
+                foreach (var (key, ids) in perKey)
+                {
+                    var change = new SyncRowChange
+                    {
+                        ChangeIds = ids,
+                        TableName = info.TableName,
+                        KeyColumn = info.KeyColumn,
+                        Key = key,
+                        BlobColumn = info.BlobColumn,
+                    };
+                    if (rows.TryGetValue(key, out var row) && BelongsToVessel(info, row, vesselId))
+                        change.Row = row;
+                    else
+                        change.Action = "D"; // deleted at the office, or now for another vessel
+                    changes.Add(change);
+                }
+            }
+
+            changes = changes
+                .OrderBy(c => tables.TryGetValue(c.TableName, out var t) ? t.SortOrder : int.MaxValue)
+                .ThenBy(c => c.Key)
+                .ToList();
+
+            var now = DateTime.UtcNow;
+            await MarkChangesAsync(vesselId, waiting.Select(w => w.Id).ToList(), "SentUtc");
+            await RecordCallAsync(vesselId, "Down", started, changes.Count, null);
+            return new SyncChangesResponse { ServerTimeUtc = now, HasMore = hasMore, Changes = changes };
+        }
+        catch (Exception ex)
+        {
+            await TryRecordCallAsync(vesselId, "Down", started, ex.Message);
+            throw;
+        }
+    }
+
+    public async Task<SyncChangesConfirmResult> ConfirmChangesAsync(int vesselId, IReadOnlyCollection<long> changeIds)
+    {
+        var confirmed = await MarkChangesAsync(vesselId, changeIds.Distinct().ToList(), "DownloadedUtc");
+        return new SyncChangesConfirmResult { Confirmed = confirmed };
+    }
+
+    /// <summary>Sets SentUtc or DownloadedUtc (now) on this vessel's change rows, in chunks.</summary>
+    private async Task<int> MarkChangesAsync(int vesselId, List<long> ids, string column)
+    {
+        if (column != "SentUtc" && column != "DownloadedUtc") throw new ArgumentException("Unknown column.", nameof(column));
+        var total = 0;
+        foreach (var chunk in ids.Chunk(1000))
+        {
+            await WithConnectionAsync(async connection =>
+            {
+                using var cmd = connection.CreateCommand();
+                var names = new List<string>();
+                for (var i = 0; i < chunk.Length; i++)
+                {
+                    names.Add($"@id{i}");
+                    AddParameter(cmd, $"@id{i}", chunk[i]);
+                }
+                AddParameter(cmd, "@v", vesselId);
+                cmd.CommandText = $"UPDATE dbo.Sync_ChangeLog SET {column} = SYSUTCDATETIME() " +
+                                  $"WHERE VesselID = @v AND SyncChangeID IN ({string.Join(",", names)})" +
+                                  (column == "DownloadedUtc" ? " AND DownloadedUtc IS NULL" : "");
+                total += await cmd.ExecuteNonQueryAsync();
+            });
+        }
+        return total;
+    }
+
+    /// <summary>The synced tables (Sync_Table), each with its key, whether it has VesselID, and its columns.</summary>
+    private async Task<Dictionary<string, SyncTableInfo>> LoadSyncTablesAsync()
+    {
+        var result = new Dictionary<string, SyncTableInfo>(StringComparer.OrdinalIgnoreCase);
+        await WithConnectionAsync(async connection =>
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(t.TableName),
+       CASE WHEN COL_LENGTH('dbo.' + QUOTENAME(t.TableName), 'VesselID') IS NULL THEN 0 ELSE 1 END,
+       c.name
+  FROM dbo.Sync_Table t
+  JOIN sys.columns c ON c.object_id = OBJECT_ID('dbo.' + QUOTENAME(t.TableName), 'U')
+ WHERE t.IsActive = 1
+ ORDER BY t.SortOrder, c.column_id";
+            using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var name = r.GetString(0);
+                if (!result.TryGetValue(name, out var info))
+                {
+                    info = new SyncTableInfo(name, r.GetInt32(1), r.IsDBNull(2) ? null : r.GetString(2),
+                        Convert.ToBoolean(r.GetValue(3)), r.IsDBNull(4) ? null : r.GetString(4),
+                        Convert.ToInt32(r.GetValue(5)) == 1, new List<string>());
+                    result[name] = info;
+                }
+                info.Columns.Add(r.GetString(6));
+            }
+        });
+        return result;
+    }
+
+    /// <summary>The records with these keys, all columns except the file contents, exactly as stored.</summary>
+    private async Task<Dictionary<long, Dictionary<string, object?>>> ReadRecordsAsync(SyncTableInfo info, List<long> keys)
+    {
+        var result = new Dictionary<long, Dictionary<string, object?>>();
+        var columns = info.Columns
+            .Where(c => info.BlobColumn == null || !string.Equals(c, info.BlobColumn, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var select = string.Join(", ", columns.Select(Bracket));
+        foreach (var chunk in keys.Chunk(1000))
+        {
+            await WithConnectionAsync(async connection =>
+            {
+                using var cmd = connection.CreateCommand();
+                var names = new List<string>();
+                for (var i = 0; i < chunk.Length; i++)
+                {
+                    names.Add($"@k{i}");
+                    AddParameter(cmd, $"@k{i}", chunk[i]);
+                }
+                cmd.CommandText = $"SELECT {select} FROM dbo.{Bracket(info.TableName)} WHERE {Bracket(info.KeyColumn!)} IN ({string.Join(",", names)})";
+                using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    for (var i = 0; i < r.FieldCount; i++)
+                        row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
+                    result[Convert.ToInt64(row[info.KeyColumn!])] = row;
+                }
+            });
+        }
+        return result;
+    }
+
+    /// <summary>A record goes to a vessel when it is for that vessel, or for all of them (VesselID -1, or no vessel column).</summary>
+    private static bool BelongsToVessel(SyncTableInfo info, Dictionary<string, object?> row, int vesselId)
+    {
+        if (info.AllVessels || !info.HasVesselColumn) return true;
+        if (!row.TryGetValue("VesselID", out var value) || value == null) return true;
+        var recordVessel = Convert.ToInt64(value);
+        // -1 (and the old 0) = every vessel; -2 = office only (Database/012_NewFeatures.sql), never sent.
+        return recordVessel is -1 or 0 || recordVessel == vesselId;
+    }
+
+    /// <summary>A column or table name in brackets (names come from sys.columns / Sync_Table, never from a caller).</summary>
+    private static string Bracket(string name) => "[" + name.Replace("]", "]]") + "]";
+
+    // =========================================================================================
     // Push (acknowledgements made on board)
     // =========================================================================================
 
@@ -461,9 +652,6 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
                 .Select(a => (a.DM_ManualVersionID, a.UserId.Trim().ToUpperInvariant()))
                 .ToHashSet();
 
-            // DM_Manual_UserAck has no identity column: the next ID is MAX + 1.
-            var nextId = (await _dms.DmManualUserAcks.MaxAsync(a => (long?)a.DmManualUserAckId) ?? 0) + 1;
-
             foreach (var ack in request.ManualAcks)
             {
                 if (string.IsNullOrWhiteSpace(ack.UserId)) continue;
@@ -479,9 +667,10 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
                     continue;
                 }
 
+                // The ID given on board (Proc_NextID, this vessel's range) when free here, else a new one in that range.
                 _dms.DmManualUserAcks.Add(new DmManualUserAck
                 {
-                    DmManualUserAckId = nextId++,
+                    DmManualUserAckId = await _dms.KeepOrNextIdAsync<DmManualUserAck>(ack.DM_Manual_UserAckID, TableIdExtensions.OriginVessel, vesselId),
                     Origin = "VSL",
                     VesselID = vesselId,
                     DM_ManualID = version.DM_ManualID,
@@ -521,8 +710,6 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
                 .Select(a => (a.CIR_MasterID!.Value, a.Fleet_CrewID ?? 0))
                 .ToHashSet();
 
-            var nextId = (await _cir.CIR_UserAck.MaxAsync(a => (long?)a.CIR_UserAckID) ?? 0) + 1;
-
             foreach (var ack in request.CircularAcks)
             {
                 if (!crew.TryGetValue((ack.UserId ?? "").Trim(), out var crewId))
@@ -545,7 +732,7 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
 
                 _cir.CIR_UserAck.Add(new CIR_UserAck
                 {
-                    CIR_UserAckID = nextId++,
+                    CIR_UserAckID = await _cir.KeepOrNextIdAsync<CIR_UserAck>(ack.CIR_UserAckID, TableIdExtensions.OriginVessel, vesselId),
                     Origin = "VSL",
                     VesselID = vesselId,
                     CIR_MasterID = ack.CIR_MasterID,
@@ -649,8 +836,8 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
             return await OtherDocumentPushResultAsync(held.Value, doc, alreadyApplied: true);
 
         var uploadedOn = doc.UploadedOn.HasValue ? ToUtc(doc.UploadedOn.Value) : DateTime.UtcNow;
-        // OtherDocumentMaster and OtherDocument_Blob have no identity column: the next ID is MAX + 1.
-        var masterId = (await _other.OtherDocumentMaster.MaxAsync(m => (long?)m.OtherDocumentMasterID) ?? 0) + 1;
+        // The IDs given on board (Proc_NextID, this vessel's range) when free here, else new ones in that range.
+        var masterId = await _other.KeepOrNextIdAsync<OtherDocumentMaster>(doc.VesselDocumentID, TableIdExtensions.OriginVessel, vesselId);
         _other.OtherDocumentMaster.Add(new OtherDocumentMaster
         {
             OtherDocumentMasterID = masterId,
@@ -669,13 +856,12 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
             ModifiedDate = uploadedOn,
         });
 
-        var blobId = (await _other.OtherDocument_Blob.MaxAsync(b => (long?)b.OtherDocument_BlobID) ?? 0) + 1;
         for (var i = 0; i < files.Count; i++)
         {
             var f = doc.Files[i];
             _other.OtherDocument_Blob.Add(new OtherDocument_Blob
             {
-                OtherDocument_BlobID = blobId++,
+                OtherDocument_BlobID = await _other.KeepOrNextIdAsync<OtherDocument_Blob>(f.VesselFileID, TableIdExtensions.OriginVessel, vesselId),
                 OtherDocumentMasterID = masterId,
                 Origin = "VSL",
                 VesselID = vesselId,
@@ -695,11 +881,12 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
             });
         }
 
-        var logId = (await _other.OtherDocument_Log.MaxAsync(l => (long?)l.OtherDocument_LogID) ?? 0) + 1;
+        // The log row is written here at the office: an office (HQ) ID.
+        var logId = await _other.NextIdAsync<OtherDocument_Log>();
         _other.OtherDocument_Log.Add(new OtherDocument_Log
         {
             OtherDocument_LogID = logId,
-            Origin = "VSL",
+            Origin = "HQ",
             VesselID = vesselId,
             OtherDocumentMasterID = masterId,
             LogDate = DateTime.Now,
@@ -711,6 +898,24 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
 
         await _other.SaveChangesAsync(); // one transaction: the document, its files and the log row, or nothing
         _other.ChangeTracker.Clear();     // the file bytes are not needed in memory any longer
+
+        // Certificate columns (Database/012_NewFeatures.sql; not mapped in EF).
+        if (doc.CertificateNo != null || doc.IssuedBy != null || doc.IssueDate != null || doc.ExpiryDate != null
+            || doc.NextSurveyDate != null || doc.ReplacesID != null)
+        {
+            await ExecuteAsync(@"UPDATE dbo.OtherDocumentMaster
+                                    SET CertificateNo = @no, IssuedBy = @by, IssueDate = @issue, ExpiryDate = @exp, NextSurveyDate = @survey,
+                                        ReplacesID = (SELECT r.OtherDocumentMasterID FROM dbo.OtherDocumentMaster r WHERE r.OtherDocumentMasterID = @rep)
+                                  WHERE OtherDocumentMasterID = @id",
+                ("@no", Truncate(doc.CertificateNo?.Trim(), 50)), ("@by", Truncate(doc.IssuedBy?.Trim(), 150)),
+                ("@issue", doc.IssueDate?.Date), ("@exp", doc.ExpiryDate?.Date), ("@survey", doc.NextSurveyDate?.Date),
+                ("@rep", doc.ReplacesID), ("@id", masterId));
+        }
+
+        // The folder it was filed in on board (Database/013_DocumentFolders.sql).
+        if (doc.FLD_FolderID != null)
+            await ExecuteAsync("UPDATE dbo.OtherDocumentMaster SET FLD_FolderID = @f WHERE OtherDocumentMasterID = @id",
+                ("@f", doc.FLD_FolderID), ("@id", masterId));
 
         return await OtherDocumentPushResultAsync(masterId, doc, alreadyApplied: false);
     }
@@ -1447,7 +1652,7 @@ UPDATE dbo.Sync_Vessel
                 SettingValue = r.IsDBNull(4) ? null : Convert.ToString(r.GetValue(4))!.TrimEnd(),
             });
         var cirSettings = await ReadRowsAsync(
-            "SELECT CIR_SettingsID, Origin, VesselID, SettingName, SettingValue FROM dbo.CIR_Setting ORDER BY CIR_SettingsID",
+            "SELECT CIR_SettingsID, Origin, VesselID, SettingName, SettingValue FROM dbo.CIR_Settings ORDER BY CIR_SettingsID",
             r => new SyncCirSettingDto
             {
                 CIR_SettingsID = Convert.ToInt64(r.GetValue(0)),
@@ -1456,8 +1661,11 @@ UPDATE dbo.Sync_Vessel
                 SettingName = r.IsDBNull(3) ? string.Empty : Convert.ToString(r.GetValue(3))!.TrimEnd(),
                 SettingValue = r.IsDBNull(4) ? null : Convert.ToString(r.GetValue(4))!.TrimEnd(),
             });
+        // TableIDstart (start of each vessel's ID range for Proc_NextID) goes along when V_Vessel has that column.
+        var hasTableIdStart = await ScalarAsync("SELECT COL_LENGTH('dbo.V_Vessel', 'TableIDstart')") != null;
         var vessels = await ReadRowsAsync(
-            "SELECT V_VesselID, Origin, VesselID, VslCode, VslName, VslType, DelivDate, BaseCurrency, VslEmailAddress, OperateBy, IsRetired FROM dbo.V_Vessel ORDER BY V_VesselID",
+            "SELECT V_VesselID, Origin, VesselID, VslCode, VslName, VslType, DelivDate, BaseCurrency, VslEmailAddress, OperateBy, IsRetired, " +
+            (hasTableIdStart ? "TableIDstart" : "CAST(NULL AS bigint)") + " FROM dbo.V_Vessel ORDER BY V_VesselID",
             r => new SyncVesselDto
             {
                 V_VesselID = Convert.ToInt64(r.GetValue(0)),
@@ -1471,6 +1679,7 @@ UPDATE dbo.Sync_Vessel
                 VslEmailAddress = r.IsDBNull(8) ? null : Convert.ToString(r.GetValue(8))!.TrimEnd(),
                 OperateBy = r.IsDBNull(9) ? null : Convert.ToString(r.GetValue(9))!.TrimEnd(),
                 IsRetired = r.IsDBNull(10) ? null : (int?)Convert.ToInt32(r.GetValue(10)),
+                TableIDstart = r.IsDBNull(11) ? null : (long?)Convert.ToInt64(r.GetValue(11)),
             });
         return new FixedTables(dmStatuses, dmSettings, cirSettings, vessels);
     }

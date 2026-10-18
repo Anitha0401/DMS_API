@@ -36,6 +36,25 @@ public interface ISyncService
     /// </summary>
     Task<OtherDocumentPushResult> PushOtherDocumentAsync(int vesselId, OtherDocumentPushDto doc, IReadOnlyList<byte[]> files);
 
+    /// <summary>
+    /// Stores records made on board in the new feature tables (inbox read marks, suggestions, folders, files), under
+    /// the same keys. Safe to repeat. Each row gets its own result, so one bad row never holds up the rest.
+    /// </summary>
+    Task<SyncPushRowsResult> PushRowsAsync(int vesselId, SyncPushRowsRequest request);
+
+    /// <summary>The contents of a SUG_Blob / FLD_Blob row for this vessel (or all vessels); null when not its file.</summary>
+    Task<(byte[] Bytes, string? FileName)?> GetFeatureFileAsync(int vesselId, string table, long blobId);
+
+    /// <summary>
+    /// Row-by-row sync (Database/010_Sync_ChangeLog.sql): up to <paramref name="max"/> records changed at the office
+    /// for this vessel, each read as it is now by its key (same table, key and data; file contents left out).
+    /// Null when 010 has not been run.
+    /// </summary>
+    Task<SyncChangesResponse?> GetChangesAsync(int vesselId, int max);
+
+    /// <summary>The ship has saved these changes: sets DownloadedUtc on its Sync_ChangeLog rows. Safe to repeat.</summary>
+    Task<SyncChangesConfirmResult> ConfirmChangesAsync(int vesselId, IReadOnlyCollection<long> changeIds);
+
     /// <summary>Records the vessel's report (pending acknowledgements, current activity, errors).</summary>
     Task HeartbeatAsync(SyncHeartbeatRequest request);
 

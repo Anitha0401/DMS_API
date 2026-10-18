@@ -27,9 +27,7 @@ namespace DMS.Data.EF.Handler
                 var dto = request.createOtherDocument;
                 var origin = string.IsNullOrWhiteSpace(dto.Origin) ? "HQ" : dto.Origin.Trim().ToUpperInvariant();
                 var vesselId = dto.VesselID;
-                var nextMasterId = (_dbContext.OtherDocumentMaster
-                    .Select(m => (long?)m.OtherDocumentMasterID)
-                    .Max() ?? 0) + 1;
+                var nextMasterId = await _dbContext.NextIdAsync<OtherDocumentMaster>(origin, vesselId, ct: cancellationToken);
 
                 var otherDocument = new OtherDocumentMaster
                 {
@@ -55,9 +53,7 @@ namespace DMS.Data.EF.Handler
 
                 var cir_Blob = new OtherDocument_Blob
                 {
-                    OtherDocument_BlobID = (_dbContext.OtherDocument_Blob
-                        .Select(m => (long?)m.OtherDocument_BlobID)
-                        .Max() ?? 0) + 1,
+                    OtherDocument_BlobID = await _dbContext.NextIdAsync<OtherDocument_Blob>(origin, vesselId, ct: cancellationToken),
                     OtherDocumentMasterID = otherDocument.OtherDocumentMasterID,
                     Origin = origin,
                     VesselID = vesselId,

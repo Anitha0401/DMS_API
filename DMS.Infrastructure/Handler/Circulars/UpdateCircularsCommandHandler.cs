@@ -1,3 +1,4 @@
+using DMS.Data.EF;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Models.Circulars;
 using MediatR;
@@ -128,12 +129,9 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
                             ? dto.VesselIdList.Distinct().ToList()
                             : new List<int> { -1 };
 
-            var nextCIR_ToAck_VslID = (_context.CIR_ToAck_Vsl
-                                         .Select(m => (long?)m.CIR_ToAck_VslID)
-                                         .Max() ?? 0) + 1;
-
             var toAckEntities = new List<CIR_ToAck_Vsl>();
-            long idCounter = nextCIR_ToAck_VslID;
+            // One block of IDs for every vessel x rank row.
+            long idCounter = await _context.NextIdAsync<CIR_ToAck_Vsl>(count: vesselIds.Count * userRanksList.Count, ct: cancellationToken);
 
             foreach (var vesselId in vesselIds)
             {

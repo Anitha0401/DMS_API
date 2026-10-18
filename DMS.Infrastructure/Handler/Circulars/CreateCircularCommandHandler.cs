@@ -29,9 +29,7 @@ namespace DMS.Data.EF.Handler
                 var cir_Master = _mapper.Map<CIR_Master>(request.createCIR);
 
                 // var cir_Number = await _queries.GetNextCIRNumbersByCategoryAsync(request.createCIR.CIR_CategoryID);
-                cir_Master.CIR_MasterID = (_dbContext.CIR_Master
-                                     .Select(m => (long?)m.CIR_MasterID)
-                                     .Max() ?? 0) + 1;
+                cir_Master.CIR_MasterID = await _dbContext.NextIdAsync<CIR_Master>(ct: cancellationToken);
                 cir_Master.Origin = "HQ";
                 cir_Master.VesselID = -1;
                 // cir_Master.CIR_Number = cir_Number;
@@ -46,9 +44,7 @@ namespace DMS.Data.EF.Handler
                 // Insert Blob
                 var cir_Blob = _mapper.Map<CIR_Blob>(request.createCIR);
 
-                cir_Blob.CIR_BlobID = (_dbContext.CIR_Blob
-                                     .Select(m => (long?)m.CIR_BlobID)
-                                     .Max() ?? 0) + 1;
+                cir_Blob.CIR_BlobID = await _dbContext.NextIdAsync<CIR_Blob>(ct: cancellationToken);
                 cir_Blob.CIR_MasterID = cir_Master.CIR_MasterID;
                 cir_Blob.Origin = "HQ";
                 cir_Blob.VesselID = -1;
@@ -74,17 +70,15 @@ namespace DMS.Data.EF.Handler
 
                 if (userRanksList != null && userRanksList.Count > 0)
                 {
-                    var nextCIR_ToAck_VslID = (_dbContext.CIR_ToAck_Vsl
-                                                 .Select(m => (long?)m.CIR_ToAck_VslID)
-                                                 .Max() ?? 0) + 1;
-
                     var toAckEntities = new List<CIR_ToAck_Vsl>();
-                    long idCounter = nextCIR_ToAck_VslID;
 
                     // Determine vessel list: use provided VesselIdList if present, otherwise fallback to -1
                     var vesselIds = (request.createCIR.VesselIdList != null && request.createCIR.VesselIdList.Any())
                                     ? request.createCIR.VesselIdList.Distinct().ToList()
                                     : new List<int> { -1 };
+
+                    // One block of IDs for every vessel x rank row.
+                    long idCounter = await _dbContext.NextIdAsync<CIR_ToAck_Vsl>(count: vesselIds.Count * userRanksList.Count, ct: cancellationToken);
 
                     // Insert a row for each vessel and each rank
                     foreach (var vesselId in vesselIds)

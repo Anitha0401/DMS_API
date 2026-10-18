@@ -53,7 +53,7 @@ public class SyncPullResponse
     public List<SyncDmStatusDto>? DmStatuses { get; set; }
     /// <summary>DM_Settings: the manual settings.</summary>
     public List<SyncDmSettingDto>? DmSettings { get; set; }
-    /// <summary>CIR_Setting: the circular settings.</summary>
+    /// <summary>CIR_Settings: the circular settings.</summary>
     public List<SyncCirSettingDto>? CirSettings { get; set; }
     /// <summary>V_Vessel: the vessel list.</summary>
     public List<SyncVesselDto>? Vessels { get; set; }
@@ -85,7 +85,7 @@ public class SyncDmSettingDto
     public string? SettingValue { get; set; }
 }
 
-/// <summary>One row of CIR_Setting at the office.</summary>
+/// <summary>One row of CIR_Settings at the office.</summary>
 public class SyncCirSettingDto
 {
     public long CIR_SettingsID { get; set; }
@@ -109,6 +109,8 @@ public class SyncVesselDto
     public string? VslEmailAddress { get; set; }
     public string? OperateBy { get; set; }
     public int? IsRetired { get; set; }
+    /// <summary>First number of the vessel's ID range for Proc_NextID (null when the office has no TableIDstart column).</summary>
+    public long? TableIDstart { get; set; }
 }
 
 /// <summary>One row of the office change table (Sync_Outbox): what changed at HQ for this vessel.</summary>
@@ -243,6 +245,8 @@ public class SyncPushRequest
 
 public class ManualAckPushDto
 {
+    /// <summary>The ID on board (Proc_NextID, this vessel's range): the office stores the row under it when free. Negative from older ships: the office numbers it.</summary>
+    public long DM_Manual_UserAckID { get; set; }
     public long DM_ManualID { get; set; }
     public long DM_ManualVersionID { get; set; }
     public int Version { get; set; }
@@ -256,6 +260,8 @@ public class ManualAckPushDto
 
 public class CircularAckPushDto
 {
+    /// <summary>The ID on board, as for ManualAckPushDto.</summary>
+    public long CIR_UserAckID { get; set; }
     public long CIR_MasterID { get; set; }
     /// <summary>Vsl_Staff.UserID; stored as Fleet_CrewID = Vsl_Staff.Vsl_StaffID.</summary>
     public string UserId { get; set; } = string.Empty;
@@ -282,6 +288,45 @@ public class SyncPushResult
     public List<string> SkippedCircularAcks { get; set; } = new();
 }
 
+// ---- Row changes (office -> vessel) --------------------------------------------------------
+// GET  api/Sync/Changes?max=500     the records changed at the office for this vessel (Sync_ChangeLog), each as it
+//                                   is now: same table, same key, same column values.
+// POST api/Sync/ChangesConfirm      the ship has saved them: their change rows get DownloadedUtc.
+
+public class SyncChangesResponse
+{
+    public DateTime ServerTimeUtc { get; set; }
+    /// <summary>More changes are waiting: call again straight away (after confirming these).</summary>
+    public bool HasMore { get; set; }
+    /// <summary>In the order the ship writes them (Sync_Table.SortOrder, parents first).</summary>
+    public List<SyncRowChange> Changes { get; set; } = new();
+}
+
+public class SyncRowChange
+{
+    /// <summary>The Sync_ChangeLog rows this change answers (one record can have several); confirm them all.</summary>
+    public List<long> ChangeIds { get; set; } = new();
+    public string TableName { get; set; } = string.Empty;
+    public string KeyColumn { get; set; } = string.Empty;
+    public long Key { get; set; }
+    /// <summary>"U" = write the record (insert or update) with Row; "D" = remove it (deleted, or no longer for this vessel).</summary>
+    public string Action { get; set; } = "U";
+    /// <summary>Every column of the record as the office holds it, except BlobColumn. Null for "D".</summary>
+    public Dictionary<string, object?>? Row { get; set; }
+    /// <summary>The file-contents column left out of Row: the ship downloads the file when it is first opened.</summary>
+    public string? BlobColumn { get; set; }
+}
+
+public class SyncChangesConfirmRequest
+{
+    public List<long> ChangeIds { get; set; } = new();
+}
+
+public class SyncChangesConfirmResult
+{
+    public int Confirmed { get; set; }
+}
+
 // ---- Other documents added on board (vessel -> office) -------------------------------------
 // POST api/Sync/OtherDocument (multipart/form-data, one document per call): a "document" part holding
 // OtherDocumentPushDto as JSON, then one "files" part per file, in the same order as Document.Files.
@@ -289,7 +334,7 @@ public class SyncPushResult
 
 public class OtherDocumentPushDto
 {
-    /// <summary>The document's ID on board (negative): only for the vessel's own bookkeeping and the office log.</summary>
+    /// <summary>The document's ID on board (Proc_NextID, this vessel's range): the office stores it under the same ID when free.</summary>
     public long VesselDocumentID { get; set; }
     public long OtherDocument_TypeID { get; set; }
     public string DocumentNumber { get; set; } = string.Empty;
@@ -300,11 +345,55 @@ public class OtherDocumentPushDto
     public DateTime? UploadedOn { get; set; }
     public string? UploadedBy { get; set; }
     public List<OtherDocumentPushFileDto> Files { get; set; } = new();
+
+    // Certificates (a type with IsCertificate = 1; Database/012_NewFeatures.sql). Empty for other documents.
+    public string? CertificateNo { get; set; }
+    public string? IssuedBy { get; set; }
+    public DateTime? IssueDate { get; set; }
+    public DateTime? ExpiryDate { get; set; }
+    public DateTime? NextSurveyDate { get; set; }
+    /// <summary>The certificate this one renews (an ID the office already holds).</summary>
+    public long? ReplacesID { get; set; }
+
+    /// <summary>The folder the document was filed in on board (FLD_Folder, same ID at the office).</summary>
+    public long? FLD_FolderID { get; set; }
+}
+
+/// <summary>
+/// POST api/Sync/PushRows: records made on board in the new feature tables (Database/012_NewFeatures.sql), sent
+/// as they are, under the same key. Only the tables in SyncService.PushableTables; Origin must be VSL and VesselID the
+/// calling vessel. Personal folders and their files are never sent.
+/// </summary>
+public class SyncPushRowsRequest
+{
+    public List<SyncPushRow> Rows { get; set; } = new();
+}
+
+public class SyncPushRow
+{
+    public string TableName { get; set; } = string.Empty;
+    public long Key { get; set; }
+    /// <summary>Every column of the record (file contents as base64).</summary>
+    public Dictionary<string, System.Text.Json.JsonElement> Row { get; set; } = new();
+}
+
+public class SyncPushRowsResult
+{
+    public List<SyncPushRowResult> Results { get; set; } = new();
+}
+
+public class SyncPushRowResult
+{
+    public string TableName { get; set; } = string.Empty;
+    public long Key { get; set; }
+    /// <summary>The office holds the record (stored now or before): the ship clears IsPendingUpload.</summary>
+    public bool Stored { get; set; }
+    public string? Error { get; set; }
 }
 
 public class OtherDocumentPushFileDto
 {
-    /// <summary>The file's ID on board (negative).</summary>
+    /// <summary>The file's ID on board: kept by the office when free, as the document's.</summary>
     public long VesselFileID { get; set; }
     public string? FileName { get; set; }
     public string? Description { get; set; }

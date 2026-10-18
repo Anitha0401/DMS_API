@@ -44,9 +44,7 @@ namespace DMS.Data.EF.Handler.Manuals
                 // Insert a new record into DmManualApprovedLists
                 var approvedListEntry = new DmManualApprovedList
                 {
-                    DmManualApprovedListId = (_dbContext.DmManualApprovedLists
-                                             .Select(m => (long?)m.DmManualApprovedListId)
-                                             .Max() ?? 0) + 1,
+                    DmManualApprovedListId = await _dbContext.NextIdAsync<DmManualApprovedList>(ct: cancellationToken),
                     Origin = "HQ",
                     VesselID = -1,
                     DM_ManualID = request.Manual.DM_ManualID,

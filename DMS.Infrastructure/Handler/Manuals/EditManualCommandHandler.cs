@@ -140,9 +140,7 @@ namespace DMS.Data.EF.Handler.Manuals
                     string nextVersion = $"{major + 1}.0";
 
                     var newDMManualVersion = new DmManualVersion();
-                    newDMManualVersion.DM_ManualVersionID = (_dbContext.DmManualVersions
-                                                          .Select(m => (long?)m.DM_ManualVersionID)
-                                                          .Max() ?? 0) + 1;
+                    newDMManualVersion.DM_ManualVersionID = await _dbContext.NextIdAsync<DmManualVersion>(ct: cancellationToken);
                     newDMManualVersion.DM_ManualID = dmManual.DM_ManualID;
                     newDMManualVersion.Origin = "HQ";
                     newDMManualVersion.VesselID = -1;

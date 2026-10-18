@@ -206,9 +206,7 @@ public class CIRGeneralQueries : ICIRGeneralQueries
     {
         try
         {
-            var cir_LogID = (_dbContext.CIR_Log
-                                    .Select(m => (long?)m.CIR_LogID)
-                                    .Max() ?? 0) + 1;
+            var cir_LogID = await _dbContext.NextIdAsync<CIR_Log>();
 
             var manualLog = new CIR_Log
             {
@@ -236,11 +234,7 @@ public class CIRGeneralQueries : ICIRGeneralQueries
     {
         try
         {
-            var nextCIR_NotificationID = _dbContext.CIR_Notification
-                                              .Select(m => (long?)m.CIR_NotificationID)
-                                              .Max() ?? 0;
-
-            nextCIR_NotificationID = nextCIR_NotificationID + 1;
+            var nextCIR_NotificationID = await _dbContext.NextIdAsync<CIR_Notification>();
 
             var notification = new CIR_Notification();
             notification.CIR_NotificationID = nextCIR_NotificationID;

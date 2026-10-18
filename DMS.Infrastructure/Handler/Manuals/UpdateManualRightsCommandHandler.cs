@@ -38,10 +38,6 @@ namespace DMS.Data.EF.Handler.Manuals
                 }
             }
 
-            var nextDM_Manual_ToAck_VslID = _dbContext.DmManualToAckVsls
-                                 .Select(m => (long?)m.DmManualToAckVslId)
-                                 .Max() ?? 0;
-
             foreach (int vesslID in vesselIdList)
             {
                 foreach (string vslRank in vesselRankList)
@@ -56,10 +52,8 @@ namespace DMS.Data.EF.Handler.Manuals
                     }
                     else
                     {
-                        nextDM_Manual_ToAck_VslID = nextDM_Manual_ToAck_VslID + 1;
-
                         var roleToAck = new DmManualToAckVsl();
-                        roleToAck.DmManualToAckVslId = nextDM_Manual_ToAck_VslID;
+                        roleToAck.DmManualToAckVslId = await _dbContext.NextIdAsync<DmManualToAckVsl>(ct: cancellationToken);
                         roleToAck.Origin = "HQ";
                         roleToAck.DM_ManualID = DM_ManualID;
                         roleToAck.VesselID = vesslID;
@@ -85,9 +79,6 @@ namespace DMS.Data.EF.Handler.Manuals
                 }
             }
 
-            var nextDmManual_ToAck_HQID = _dbContext.DmManualToAckHqs
-                                 .Select(m => (long?)m.DmManualToAckHqid)
-                                 .Max() ?? 0;
             foreach (int hqUserID in hqUsersIdList)
             {
                 var existing = existingHqAcks.FirstOrDefault(x => x.HqUsersId == hqUserID);
@@ -100,10 +91,8 @@ namespace DMS.Data.EF.Handler.Manuals
                 }
                 else
                 {
-                    nextDmManual_ToAck_HQID = nextDmManual_ToAck_HQID + 1;
-
                     var hqToAck = new DmManualToAckHq();
-                    hqToAck.DmManualToAckHqid = nextDmManual_ToAck_HQID;
+                    hqToAck.DmManualToAckHqid = await _dbContext.NextIdAsync<DmManualToAckHq>(ct: cancellationToken);
                     hqToAck.Origin = "HQ";
                     hqToAck.VesselID = -1;
                     hqToAck.HqUsersId = hqUserID;

@@ -40,6 +40,27 @@ public class SyncController : ControllerBase
     }
 
     /// <summary>
+    /// GET api/Sync/Changes?max=500: the records changed at the office for this vessel (Sync_ChangeLog), each as it
+    /// is now - same table, key and data (file contents are downloaded on board when first opened).
+    /// </summary>
+    [HttpGet("Changes")]
+    public async Task<ActionResult<SyncChangesResponse>> GetChanges(int max = 500)
+    {
+        var result = await _service.GetChangesAsync(VesselId, max);
+        if (result == null)
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                "Row-by-row sync is not set up in the office database (run Database/010_Sync_ChangeLog.sql).");
+        _logger.LogInformation("Sync changes for vessel {VesselId}: {Count} record(s), more: {HasMore}",
+            VesselId, result.Changes.Count, result.HasMore);
+        return Ok(result);
+    }
+
+    /// <summary>POST api/Sync/ChangesConfirm: the ship has saved these changes (sets Sync_ChangeLog.DownloadedUtc).</summary>
+    [HttpPost("ChangesConfirm")]
+    public async Task<ActionResult<SyncChangesConfirmResult>> ConfirmChanges([FromBody] SyncChangesConfirmRequest request)
+        => Ok(await _service.ConfirmChangesAsync(VesselId, request.ChangeIds));
+
+    /// <summary>
     /// POST api/Sync/Confirm: the vessel has applied a pull. Marks the change-table rows it downloaded
     /// (Sync_Outbox.DownloadedUtc) and confirms the items that pull sent.
     /// </summary>
@@ -109,6 +130,17 @@ public class SyncController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>POST api/Sync/PushRows: records made on board in the new feature tables, same keys (see SyncPushRowsRequest).</summary>
+    [HttpPost("PushRows")]
+    [RequestSizeLimit(MaxOtherDocumentUploadBytes)]
+    public async Task<ActionResult<SyncPushRowsResult>> PushRows([FromBody] SyncPushRowsRequest request)
+    {
+        var result = await _service.PushRowsAsync(VesselId, request);
+        _logger.LogInformation("Sync push rows from vessel {VesselId}: {Stored} of {Count} stored",
+            VesselId, result.Results.Count(r => r.Stored), result.Results.Count);
+        return Ok(result);
+    }
+
     /// <summary>POST api/Sync/Heartbeat: link check plus what the ship is doing and still has to send.</summary>
     [HttpPost("Heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] SyncHeartbeatRequest request)
@@ -116,6 +148,15 @@ public class SyncController : ControllerBase
         request.VesselID = VesselId;
         await _service.HeartbeatAsync(request);
         return NoContent();
+    }
+
+    /// <summary>GET api/Sync/FeatureFile/{table}/{id}: a suggestion or folder file (SUG_Blob / FLD_Blob), downloaded when first opened on board.</summary>
+    [HttpGet("FeatureFile/{table}/{id:long}")]
+    public async Task<IActionResult> GetFeatureFile(string table, long id)
+    {
+        var file = await _service.GetFeatureFileAsync(VesselId, table, id);
+        if (file == null) return NotFound();
+        return File(file.Value.Bytes, "application/octet-stream", file.Value.FileName);
     }
 
     /// <summary>GET api/Sync/ManualAttachment/{id}: one file, downloaded when first needed on board.</summary>
