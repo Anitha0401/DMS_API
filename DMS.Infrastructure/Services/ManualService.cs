@@ -3,6 +3,7 @@ using DMS.Application.Interface;
 using DMS.Data.EF;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Application.DTO.Circulars;
 using DMS.Application.DTO.Manuals;
 using DMS.Data.EF.Models.Manuals;
@@ -12,14 +13,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Application;
 
-public class DMSService : IDMSService
+public class ManualService : IManualService
 {
     private readonly DmsContext _dbContext;
     private readonly IMediator _mediator;
     private readonly ManualGeneralQueries _queries;
     private readonly IMapper _mapper;
 
-    public DMSService(DmsContext context, IMediator mediator, ManualGeneralQueries queries, IMapper mapper)
+    public ManualService(DmsContext context, IMediator mediator, ManualGeneralQueries queries, IMapper mapper)
     {
         _dbContext = context;
         _mediator = mediator;
@@ -331,7 +332,7 @@ public class DMSService : IDMSService
                           }).FirstOrDefaultAsync();
 
         if (data == null)
-            throw new ArgumentNullException(nameof(data), "The manual provided does not exist.");
+            throw new KeyNotFoundException("The manual provided does not exist.");
 
         return data;
     }
@@ -353,7 +354,7 @@ public class DMSService : IDMSService
                           }).FirstOrDefaultAsync();
 
         if (data == null)
-            throw new ArgumentNullException(nameof(data), "The manual provided does not exist.");
+            throw new KeyNotFoundException("The manual provided does not exist.");
 
         return data;
     }
@@ -451,7 +452,7 @@ public class DMSService : IDMSService
                           }).FirstOrDefaultAsync();
 
         if (data == null)
-            throw new ArgumentNullException(nameof(data), "The manual provided does not exist.");
+            throw new KeyNotFoundException("The manual provided does not exist.");
 
         return data;
     }
@@ -463,11 +464,19 @@ public class DMSService : IDMSService
         return data;
     }
 
-    public async Task<List<ManualNotificationDto>> GetManualNotificationListAsync(int limit)
+    public async Task<List<ManualNotificationDto>> GetManualNotificationListAsync(int limit, string userID)
     {
-        var data = await _queries.GetNotificationList();
+        var data = await _queries.GetNotificationList(userID, limit);
 
         var notificationList = _mapper.Map<List<ManualNotificationDto>>(data);
+
+        // Read/unread is kept per user (Notification_Read); before that table exists, the shared flag is shown.
+        if (await NotificationReads.IsInstalledAsync(_dbContext))
+        {
+            var read = await NotificationReads.ReadIdsAsync(_dbContext, NotificationReads.Manual, userID);
+            foreach (var n in notificationList)
+                n.IsRead = read.Contains(n.ManualNotificationId) ? 1 : 0;
+        }
 
         return notificationList;
     }
@@ -527,40 +536,36 @@ public class DMSService : IDMSService
         return true;
     }
 
-    public async Task DeleteDmManualAsync(long dm_ManualID)
+    /// <summary>Submits a draft: released straight away, or sent to the first approver when the manual needs approval.</summary>
+    public async Task<bool> PublishManualAsync(ManualApproveDto request)
     {
-        var manual = await _dbContext.DmManuals.FindAsync(dm_ManualID);
+        if (request == null) throw new ArgumentNullException(nameof(request));
 
-        if (manual == null)
-            throw new ArgumentNullException(nameof(dm_ManualID), "The DM_ManualID provided does not exist.");
-
-
-        var manualVersionList = await _dbContext.DmManualVersions
-                                    .Where(x => x.DM_ManualID == dm_ManualID)
-                                    .ToListAsync();
-        foreach (var manualVersion in manualVersionList)
+        return await _mediator.Send(new PublishManualCommand(new PublishManualDto
         {
-            manualVersion.IsActive = 0;
-        }
-
-        manual.IsDeleted = 1;
-        await _dbContext.SaveChangesAsync();
-
-        await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.DELETE, "Manual deleted", "");
+            DM_ManualID = request.DM_ManualID,
+            DM_ManualVersionID = request.DM_ManualVersionID,
+            ManualName = request.ManualName,
+            UserID = request.UserID,
+            UserRole = request.UserRole,
+            Comments = request.Comments,
+        }));
     }
 
-    public async Task DeleteDmManualVersionAsync(long dm_ManualID)
+    public async Task DeleteDmManualAsync(long dm_ManualID, string userID)
     {
-        long DM_ManualVersionID = -1; //Get latest version id
-        var manualVersion = await _dbContext.DmManualVersions.FindAsync(DM_ManualVersionID);
+        await _mediator.Send(new DeleteManualCommand(new DeleteManualDto { DM_ManualID = dm_ManualID, UserID = userID }));
+    }
 
-        if (manualVersion == null)
-            throw new ArgumentNullException(nameof(DM_ManualVersionID), "The DM_ManualVersionID provided does not exist.");
-
-        manualVersion.IsActive = 0;
-        await _dbContext.SaveChangesAsync();
-
-        await _queries.AddNotification(dm_ManualID, -1, "", ManualNotificationType.DELETE, "Manual Version deleted", "");
+    /// <summary>Removes the manual's newest version (a draft not yet released); the version before it becomes current again.</summary>
+    public async Task DeleteDmManualVersionAsync(long dm_ManualID, string userID)
+    {
+        await _mediator.Send(new DeleteManualVersionCommand(new DeleteManualVersionDto
+        {
+            DM_ManualID = dm_ManualID,
+            DM_ManualVersionID = 0, // the newest version is looked up by the handler
+            UserID = userID,
+        }));
     }
 
     public async Task AddToFavouriteAsync(long dm_ManualID, string userID)
@@ -571,13 +576,15 @@ public class DMSService : IDMSService
             {
                 var nextDM_ManualUserFavouriteID = await _dbContext.NextIdAsync<DmManualUserFavourite>();
 
-                var userFavourite = new DmManualUserFavourite();
-                userFavourite.DM_ManualUserFavouriteID = nextDM_ManualUserFavouriteID;
-                userFavourite.Origin = "HQ";
-                userFavourite.VesselID = -1;
-                userFavourite.DM_ManualID = dm_ManualID;
-                userFavourite.UserId = userID;
-                userFavourite.IsDisabled = 0;
+                var userFavourite = new DmManualUserFavourite
+                {
+                    DM_ManualUserFavouriteID = nextDM_ManualUserFavouriteID,
+                    Origin = "HQ",
+                    VesselID = -1,
+                    DM_ManualID = dm_ManualID,
+                    UserId = userID,
+                    IsDisabled = 0
+                };
                 await _dbContext.DmManualUserFavourites.AddAsync(userFavourite);
 
                 await _dbContext.SaveChangesAsync();
@@ -591,11 +598,30 @@ public class DMSService : IDMSService
         }
     }
 
-    public async Task<bool> MarkNotificationReadAsync(long notificationID)
+    public async Task RemoveFromFavouriteAsync(long dm_ManualID, string userID)
+    {
+        var favourite = await _dbContext.DmManualUserFavourites
+            .FirstOrDefaultAsync(f => f.DM_ManualID == dm_ManualID && f.UserId == userID && (f.IsDisabled ?? 0) == 0);
+
+        if (favourite == null)
+            return;
+
+        favourite.IsDisabled = 1;
+        await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task<bool> MarkNotificationReadAsync(long notificationID, string userID)
     {
         var notification = await _dbContext.DM_ManualNotification
                                 .FirstOrDefaultAsync(n => n.DM_ManualNotificationId == notificationID);
         if (notification == null) return false;
+
+        if (await NotificationReads.IsInstalledAsync(_dbContext))
+        {
+            // Read for this user only; others still see it as new.
+            await NotificationReads.MarkReadAsync(_dbContext, NotificationReads.Manual, notificationID, userID);
+            return true;
+        }
 
         notification.IsRead = 1;
         await _dbContext.SaveChangesAsync();

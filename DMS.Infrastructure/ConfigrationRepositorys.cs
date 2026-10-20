@@ -3,6 +3,7 @@ using DMS.Application.Interface;
 using DMS.Data.EF.Features;
 using DMS.Data.EF.Query.Circulars;
 using DMS.Data.EF.Query.Manuals;
+using DMS.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,7 +37,7 @@ public static class ConfigrationRepositorys
 
     public static IServiceCollection RepositorysDependencyRegister(this IServiceCollection service)
     {
-        service.AddScoped<IDMSService, DMSService>();
+        service.AddScoped<IManualService, ManualService>();
         service.AddScoped<ICIRService, CIRService>();
         service.AddScoped<IOtherDocumentService, OtherDocumentService>();
         service.AddScoped<IVesselService, VesselService>();
@@ -47,10 +48,7 @@ public static class ConfigrationRepositorys
         // New features (Database/012_NewFeatures.sql)
         service.AddScoped<SqlDb>();
         service.AddScoped<IAckDashboardService, AckDashboardService>();
-        service.AddScoped<IInboxService, InboxService>();
-        service.AddScoped<ICircularExtrasService, CircularExtrasService>();
         service.AddScoped<ISuggestionService, SuggestionService>();
-        service.AddScoped<ICertificateService, CertificateService>();
         service.AddScoped<ISearchService, SearchService>();
         return service;
     }

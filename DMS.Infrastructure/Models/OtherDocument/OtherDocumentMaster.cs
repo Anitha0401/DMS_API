@@ -17,6 +17,14 @@ public partial class OtherDocumentMaster
     [Column("VesselID")]
     public int VesselID { get; set; }
 
+    public long? FLD_FolderID { get; set; }
+
+    /// <summary>
+    /// 1 = added at the office and kept there: never sent to a vessel, even though VesselID is the vessel it is about
+    /// (Database/017_OtherDocument_IsForOfficeOnly.sql). 0 = a normal document.
+    /// </summary>
+    public int IsForOfficeOnly { get; set; }
+
     [Column("OtherDocument_TypeID")]
     public long? OtherDocument_TypeID { get; set; }
 
@@ -42,6 +50,8 @@ public partial class OtherDocumentMaster
     public string? UploadedBy { get; set; }
 
     public int? IsDeleted { get; set; }
+
+    public DateTime? ExpiryDate { get; set; }
 
     [NotMapped]
     public string? CreatedBy { get; set; }

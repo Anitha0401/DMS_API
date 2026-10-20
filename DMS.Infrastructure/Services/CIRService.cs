@@ -1,20 +1,33 @@
 using AutoMapper;
 using DMS.Application.DTO.Circulars;
+using DMS.Application.DTO.Features;
 using DMS.Application.Interface;
 using DMS.Data.EF;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
 using DMS.Data.EF.Query.Circulars;
 using DMS.Infrastructure.Query.Circulars;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Threading;
+using System.Data;
 
 namespace DMS.Application;
 
 public class CIRService : ICIRService
 {
+    private static readonly string[] LinkTypes = { "Amends", "Supersedes", "RefersTo" };
+
+    private const string LinkSelect = @"
+SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Title AS CircularTitle, c.CircularType,
+       c.Status AS CircularStatus, l.DM_ManualID, m.ManualNo, m.ManualName, l.DM_ManualVersionID, l.LinkType, l.Remarks,
+       CAST(l.IsActive AS bit) AS IsActive, l.ClosedOn, l.CreatedOn
+  FROM dbo.CIR_ManualLink l
+  JOIN dbo.CIR_Master c ON c.CIR_MasterID = l.CIR_MasterID
+  JOIN dbo.DM_Manual m ON m.DM_ManualID = l.DM_ManualID";
+
     private readonly CircularsContext _dbContext;
     private readonly IMediator _mediator;
     private readonly CIRGeneralQueries _queries;
@@ -92,6 +105,7 @@ public class CIRService : ICIRService
                         parent.Children.Add(child);
                 }
             }
+
         }
 
         return root;
@@ -161,11 +175,19 @@ public class CIRService : ICIRService
         return counts;
     }
 
-    public async Task<List<CircularsNotificationDto>> GetCIRNotificationListAsync(int limit)
+    public async Task<List<CircularsNotificationDto>> GetCIRNotificationListAsync(int limit, string userID)
     {
-        var data = await _queries.GetNotificationList();
+        var data = await _queries.GetNotificationList(userID, limit);
 
         var notificationList = _mapper.Map<List<CircularsNotificationDto>>(data);
+
+        // Read/unread is kept per user (Notification_Read); before that table exists, the shared flag is shown.
+        if (await NotificationReads.IsInstalledAsync(_dbContext))
+        {
+            var read = await NotificationReads.ReadIdsAsync(_dbContext, NotificationReads.Circular, userID);
+            foreach (var n in notificationList)
+                n.IsRead = read.Contains(n.CIRNotificationId) ? 1 : 0;
+        }
 
         return notificationList;
     }
@@ -185,7 +207,7 @@ public class CIRService : ICIRService
                    .FirstOrDefaultAsync();
 
         if (cat == null)
-            throw new InvalidOperationException($"Category with ID {categoryId} not found.");
+            throw new KeyNotFoundException($"Category with ID {categoryId} not found.");
 
         var year = DateTime.UtcNow.Year;
         var circularTypePrefix = cat.CircularType == "Circulars" ? "CIR" : "ALT";
@@ -379,6 +401,18 @@ public class CIRService : ICIRService
         }
     }
 
+    public async Task RemoveFromFavouriteAsync(long cir_MasterID, string userID)
+    {
+        var favourite = await _dbContext.CIR_UserFavourite
+            .FirstOrDefaultAsync(f => f.CIR_MasterID == cir_MasterID && f.UserId == userID && (f.IsDisabled ?? 0) == 0);
+
+        if (favourite == null)
+            return;
+
+        favourite.IsDisabled = 1;
+        await _dbContext.SaveChangesAsync();
+    }
+
     public async Task<long> UpdateCircularAsync(EditCircularDto editDto)
     {
         if (editDto is null)
@@ -389,14 +423,300 @@ public class CIRService : ICIRService
         return result;
     }
 
-    public async Task<bool> MarkNotificationReadAsync(long notificationID)
+    public async Task<bool> MarkNotificationReadAsync(long notificationID, string userID)
     {
         var notification = await _dbContext.CIR_Notification
                                 .FirstOrDefaultAsync(n => n.CIR_NotificationID == notificationID);
         if (notification == null) return false;
 
+        if (await NotificationReads.IsInstalledAsync(_dbContext))
+        {
+            // Read for this user only; others still see it as new.
+            await NotificationReads.MarkReadAsync(_dbContext, NotificationReads.Circular, notificationID, userID);
+            return true;
+        }
+
         notification.IsRead = 1;
         await _dbContext.SaveChangesAsync();
         return true;
     }
+
+    public async Task<CircularExtras?> GetCircularesExtraInfoAsync(long circularId)
+    {
+        // Read using the DbContext connection and map to the DTOs directly (avoids dependency on SqlDb here).
+        CircularExtras? extras = null;
+        var links = new List<CircularManualLink>();
+
+        var sql = @"SELECT c.CIR_MasterID, c.Status, c.AckDueDays, c.ValidUntil, c.SupersededByID, s.CIR_Number AS SupersededByNumber,
+       CAST(ISNULL(cat.RequiresValidUntil, 0) AS bit) AS RequiresValidUntil
+  FROM dbo.CIR_Master c
+  LEFT JOIN dbo.CIR_Master s ON s.CIR_MasterID = c.SupersededByID
+  LEFT JOIN dbo.CIR_Category cat ON cat.CIR_CategoryID = c.CIR_CategoryID
+ WHERE c.CIR_MasterID = @id";
+
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            var p = cmd.CreateParameter();
+            p.ParameterName = "@id";
+            p.Value = circularId;
+            cmd.Parameters.Add(p);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                extras = new CircularExtras
+                {
+                    CIR_MasterID = reader.GetInt64(reader.GetOrdinal("CIR_MasterID")),
+                    Status = reader.IsDBNull(reader.GetOrdinal("Status")) ? null : reader.GetString(reader.GetOrdinal("Status")),
+                    AckDueDays = reader.IsDBNull(reader.GetOrdinal("AckDueDays")) ? null : reader.GetInt32(reader.GetOrdinal("AckDueDays")),
+                    ValidUntil = reader.IsDBNull(reader.GetOrdinal("ValidUntil")) ? null : reader.GetDateTime(reader.GetOrdinal("ValidUntil")),
+                    SupersededByID = reader.IsDBNull(reader.GetOrdinal("SupersededByID")) ? null : reader.GetInt64(reader.GetOrdinal("SupersededByID")),
+                    SupersededByNumber = reader.IsDBNull(reader.GetOrdinal("SupersededByNumber")) ? null : reader.GetString(reader.GetOrdinal("SupersededByNumber")),
+                    RequiresValidUntil = !reader.IsDBNull(reader.GetOrdinal("RequiresValidUntil")) && reader.GetBoolean(reader.GetOrdinal("RequiresValidUntil")),
+                };
+            }
+
+            await reader.CloseAsync();
+
+            using var cmd2 = connection.CreateCommand();
+            cmd2.CommandText = LinkSelect + " WHERE l.CIR_MasterID = @id ORDER BY l.IsActive DESC, m.ManualNo";
+            var p2 = cmd2.CreateParameter();
+            p2.ParameterName = "@id";
+            p2.Value = circularId;
+            cmd2.Parameters.Add(p2);
+
+            using var reader2 = await cmd2.ExecuteReaderAsync();
+            while (await reader2.ReadAsync())
+            {
+                var link = new CircularManualLink
+                {
+                    CIR_ManualLinkID = reader2.GetInt64(reader2.GetOrdinal("CIR_ManualLinkID")),
+                    CIR_MasterID = reader2.GetInt64(reader2.GetOrdinal("CIR_MasterID")),
+                    CircularNumber = reader2.IsDBNull(reader2.GetOrdinal("CircularNumber")) ? null : reader2.GetString(reader2.GetOrdinal("CircularNumber")),
+                    CircularTitle = reader2.IsDBNull(reader2.GetOrdinal("CircularTitle")) ? null : reader2.GetString(reader2.GetOrdinal("CircularTitle")),
+                    CircularType = reader2.IsDBNull(reader2.GetOrdinal("CircularType")) ? null : reader2.GetString(reader2.GetOrdinal("CircularType")),
+                    CircularStatus = reader2.IsDBNull(reader2.GetOrdinal("CircularStatus")) ? null : reader2.GetString(reader2.GetOrdinal("CircularStatus")),
+                    DM_ManualID = reader2.GetInt64(reader2.GetOrdinal("DM_ManualID")),
+                    ManualNo = reader2.IsDBNull(reader2.GetOrdinal("ManualNo")) ? null : reader2.GetString(reader2.GetOrdinal("ManualNo")),
+                    ManualName = reader2.IsDBNull(reader2.GetOrdinal("ManualName")) ? null : reader2.GetString(reader2.GetOrdinal("ManualName")),
+                    DM_ManualVersionID = reader2.IsDBNull(reader2.GetOrdinal("DM_ManualVersionID")) ? null : reader2.GetInt64(reader2.GetOrdinal("DM_ManualVersionID")),
+                    LinkType = reader2.IsDBNull(reader2.GetOrdinal("LinkType")) ? string.Empty : reader2.GetString(reader2.GetOrdinal("LinkType")),
+                    Remarks = reader2.IsDBNull(reader2.GetOrdinal("Remarks")) ? null : reader2.GetString(reader2.GetOrdinal("Remarks")),
+                    IsActive = !reader2.IsDBNull(reader2.GetOrdinal("IsActive")) && reader2.GetBoolean(reader2.GetOrdinal("IsActive")),
+                    ClosedOn = reader2.IsDBNull(reader2.GetOrdinal("ClosedOn")) ? null : reader2.GetDateTime(reader2.GetOrdinal("ClosedOn")),
+                    CreatedOn = reader2.IsDBNull(reader2.GetOrdinal("CreatedOn")) ? null : reader2.GetDateTime(reader2.GetOrdinal("CreatedOn"))
+                };
+                links.Add(link);
+            }
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
+
+        if (extras == null) return null;
+        extras.Links = links;
+        return extras;
+    }
+
+    public async Task<string?> SaveCircularesExtraInfoAsync(long circularId, SaveCircularExtras request)
+    {
+        var current = await GetCircularesExtraInfoAsync(circularId);
+        if (current == null) return "Circular not found.";
+        if (request.AckDueDays is < 0 or > 3650) return "Acknowledge-by days must be between 0 and 3650.";
+        if (current.RequiresValidUntil && request.ValidUntil == null) return "This category needs a \"valid until\" date.";
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_Master SET AckDueDays = {request.AckDueDays}, ValidUntil = {request.ValidUntil?.Date} WHERE CIR_MasterID = {circularId}");
+        return null;
+    }
+
+    public async Task<string?> AddManualLinkAsync(long circularId, AddManualLink request, OfficeUser user)
+    {
+        if (!LinkTypes.Contains(request.LinkType)) return "Link type must be Amends, Supersedes or RefersTo.";
+        // Verify circular exists
+        if (!await _dbContext.CIR_Master.AnyAsync(m => m.CIR_MasterID == circularId))
+            return "Circular not found.";
+
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            using var checkCmd = connection.CreateCommand();
+            checkCmd.CommandText = "SELECT 1 FROM dbo.DM_Manual WHERE DM_ManualID = @id AND ISNULL(IsDeleted, 0) <> 1";
+            var cp = checkCmd.CreateParameter(); cp.ParameterName = "@id"; cp.Value = request.ManualId; checkCmd.Parameters.Add(cp);
+            var found = await checkCmd.ExecuteScalarAsync();
+            if (found == null) return "Manual not found.";
+
+            using var checkCmd2 = connection.CreateCommand();
+            checkCmd2.CommandText = "SELECT 1 FROM dbo.CIR_ManualLink WHERE CIR_MasterID = @c AND DM_ManualID = @m AND IsActive = 1";
+            var p1 = checkCmd2.CreateParameter(); p1.ParameterName = "@c"; p1.Value = circularId; checkCmd2.Parameters.Add(p1);
+            var p2 = checkCmd2.CreateParameter(); p2.ParameterName = "@m"; p2.Value = request.ManualId; checkCmd2.Parameters.Add(p2);
+            var exists = await checkCmd2.ExecuteScalarAsync();
+            if (exists != null) return "This manual is already linked.";
+
+            var id = await _dbContext.NextIdAsync("CIR_ManualLink");
+
+            using var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText = @"INSERT dbo.CIR_ManualLink (CIR_ManualLinkID, Origin, VesselID, CIR_MasterID, DM_ManualID, DM_ManualVersionID, LinkType, Remarks, IsActive, CreatedBy, CreatedOn)
+VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
+            var ip = insertCmd.CreateParameter(); ip.ParameterName = "@id"; ip.Value = id; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@c"; ip.Value = circularId; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@m"; ip.Value = request.ManualId; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@v"; ip.Value = request.ManualVersionId is null ? (object)DBNull.Value : request.ManualVersionId; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@t"; ip.Value = request.LinkType; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@r"; ip.Value = (object?)Cut(request.Remarks, 500) ?? DBNull.Value; insertCmd.Parameters.Add(ip);
+            ip = insertCmd.CreateParameter(); ip.ParameterName = "@by"; ip.Value = user.UserId; insertCmd.Parameters.Add(ip);
+            await insertCmd.ExecuteNonQueryAsync();
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
+        return null;
+    }
+
+    public Task RemoveManualLinkAsync(long linkId)
+        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.CIR_ManualLink WHERE CIR_ManualLinkID = {linkId}");
+
+    public async Task<string?> CancelCircularAsync(long circularId, CancelCircular request, OfficeUser user)
+    {
+        var current = await _dbContext.CIR_Master.FirstOrDefaultAsync(m => m.CIR_MasterID == circularId);
+        if (current == null) return "Circular not found.";
+        var status = current.Status;
+        if (status == "Cancelled") return "This circular is already cancelled.";
+        if (status is "Temp" or "Draft") return "A draft cannot be cancelled; delete it instead.";
+        if (request.SupersededById == circularId) return "A circular cannot supersede itself.";
+        if (request.SupersededById != null && !await _dbContext.CIR_Master.AnyAsync(m => m.CIR_MasterID == request.SupersededById && (m.IsDeleted ?? 0) != 1))
+            return "The superseding circular was not found.";
+        var remarks = string.IsNullOrWhiteSpace(request.Reason) ? null : $"Cancelled by {user.UserName}: {request.Reason.Trim()}";
+
+        current.Status = "Cancelled";
+        // Use SQL update because SupersededByID is not exposed on the EF entity mapping used here.
+        // current.SupersededByID = request.SupersededById;
+        current.ModifiedBy = user.UserId;
+        current.ModifiedDate = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(remarks))
+        {
+            var combined = (current.Remarks ?? string.Empty) + (string.IsNullOrEmpty(current.Remarks) ? string.Empty : "\r\n") + remarks;
+            current.Remarks = combined.Length <= 4000 ? combined : combined.Substring(0, 4000);
+        }
+        await _dbContext.SaveChangesAsync();
+        return null;
+    }
+
+    public async Task<List<CircularManualLink>> GetForManualAsync(long manualId)
+    {
+        var result = new List<CircularManualLink>();
+        var sql = LinkSelect + @" WHERE l.DM_ManualID = @id AND ISNULL(c.IsDeleted, 0) <> 1 AND ISNULL(c.Status, '') NOT IN ('Temp', 'Draft')
+ ORDER BY l.IsActive DESC, COALESCE(c.ReleasedDate, c.DateIssued) DESC";
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = manualId; cmd.Parameters.Add(p);
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var link = new CircularManualLink
+                {
+                    CIR_ManualLinkID = reader.GetInt64(reader.GetOrdinal("CIR_ManualLinkID")),
+                    CIR_MasterID = reader.GetInt64(reader.GetOrdinal("CIR_MasterID")),
+                    CircularNumber = reader.IsDBNull(reader.GetOrdinal("CircularNumber")) ? null : reader.GetString(reader.GetOrdinal("CircularNumber")),
+                    CircularTitle = reader.IsDBNull(reader.GetOrdinal("CircularTitle")) ? null : reader.GetString(reader.GetOrdinal("CircularTitle")),
+                    CircularType = reader.IsDBNull(reader.GetOrdinal("CircularType")) ? null : reader.GetString(reader.GetOrdinal("CircularType")),
+                    CircularStatus = reader.IsDBNull(reader.GetOrdinal("CircularStatus")) ? null : reader.GetString(reader.GetOrdinal("CircularStatus")),
+                    DM_ManualID = reader.GetInt64(reader.GetOrdinal("DM_ManualID")),
+                    ManualNo = reader.IsDBNull(reader.GetOrdinal("ManualNo")) ? null : reader.GetString(reader.GetOrdinal("ManualNo")),
+                    ManualName = reader.IsDBNull(reader.GetOrdinal("ManualName")) ? null : reader.GetString(reader.GetOrdinal("ManualName")),
+                    DM_ManualVersionID = reader.IsDBNull(reader.GetOrdinal("DM_ManualVersionID")) ? null : reader.GetInt64(reader.GetOrdinal("DM_ManualVersionID")),
+                    LinkType = reader.IsDBNull(reader.GetOrdinal("LinkType")) ? string.Empty : reader.GetString(reader.GetOrdinal("LinkType")),
+                    Remarks = reader.IsDBNull(reader.GetOrdinal("Remarks")) ? null : reader.GetString(reader.GetOrdinal("Remarks")),
+                    IsActive = !reader.IsDBNull(reader.GetOrdinal("IsActive")) && reader.GetBoolean(reader.GetOrdinal("IsActive")),
+                    ClosedOn = reader.IsDBNull(reader.GetOrdinal("ClosedOn")) ? null : reader.GetDateTime(reader.GetOrdinal("ClosedOn")),
+                    CreatedOn = reader.IsDBNull(reader.GetOrdinal("CreatedOn")) ? null : reader.GetDateTime(reader.GetOrdinal("CreatedOn"))
+                };
+                result.Add(link);
+            }
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
+        return result;
+    }
+
+    public Task<int> CloseLinksForManualAsync(long manualId)
+        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_ManualLink SET IsActive = 0, ClosedOn = GETUTCDATE()\n                              WHERE DM_ManualID = {manualId} AND IsActive = 1 AND LinkType IN ('Amends', 'Supersedes')");
+
+    public async Task<List<CircularCategorySetting>> GetCategoriesAsync()
+    {
+        var result = new List<CircularCategorySetting>();
+        var sql = @"SELECT CIR_CategoryID, CircularType, CategoryCode, Category, CAST(ISNULL(RequiresValidUntil, 0) AS bit) AS RequiresValidUntil
+  FROM dbo.CIR_Category WHERE ISNULL(isActive, 1) = 1 ORDER BY CircularType, Sortorder, Category";
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(new CircularCategorySetting
+                {
+                    CIR_CategoryID = reader.GetInt64(reader.GetOrdinal("CIR_CategoryID")),
+                    CircularType = reader.IsDBNull(reader.GetOrdinal("CircularType")) ? null : reader.GetString(reader.GetOrdinal("CircularType")),
+                    CategoryCode = reader.IsDBNull(reader.GetOrdinal("CategoryCode")) ? null : reader.GetString(reader.GetOrdinal("CategoryCode")),
+                    Category = reader.IsDBNull(reader.GetOrdinal("Category")) ? null : reader.GetString(reader.GetOrdinal("Category")),
+                    RequiresValidUntil = !reader.IsDBNull(reader.GetOrdinal("RequiresValidUntil")) && reader.GetBoolean(reader.GetOrdinal("RequiresValidUntil"))
+                });
+            }
+        }
+        finally { if (openedHere) await connection.CloseAsync(); }
+        return result;
+    }
+
+    public Task SaveCategoryAsync(long categoryId, bool requiresValidUntil)
+        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_Category SET RequiresValidUntil = {(requiresValidUntil ? 1 : 0)} WHERE CIR_CategoryID = {categoryId}");
+
+    public async Task<ManualExtras?> GetManualAsync(long manualId)
+    {
+        ManualExtras? result = null;
+        var connection = _dbContext.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT DM_ManualID, AckDueDays FROM dbo.DM_Manual WHERE DM_ManualID = @id";
+            var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = manualId; cmd.Parameters.Add(p);
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                result = new ManualExtras
+                {
+                    DM_ManualID = reader.GetInt64(reader.GetOrdinal("DM_ManualID")),
+                    AckDueDays = reader.IsDBNull(reader.GetOrdinal("AckDueDays")) ? null : reader.GetInt32(reader.GetOrdinal("AckDueDays"))
+                };
+            }
+        }
+        finally { if (openedHere) await connection.CloseAsync(); }
+        return result;
+    }
+
+    public Task SaveManualAsync(long manualId, int? ackDueDays)
+        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.DM_Manual SET AckDueDays = {(ackDueDays is null ? (int?)null : Math.Clamp(ackDueDays.Value, 0, 3650))} WHERE DM_ManualID = {manualId}");
+
+    private static string? Cut(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Length <= max ? s.Trim() : s.Trim()[..max];
+
+
 }

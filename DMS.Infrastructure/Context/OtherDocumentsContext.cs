@@ -16,6 +16,8 @@ public partial class OtherDocumentsContext : DbContext
 
     public virtual DbSet<OtherDocumentMaster> OtherDocumentMaster { get; set; } = null!;
 
+    public virtual DbSet<FldFolder> FldFolders { get; set; } = null!;
+
     public virtual DbSet<OtherDocument_Blob> OtherDocument_Blob { get; set; } = null!;
 
     public virtual DbSet<OtherDocument_Type> OtherDocument_Type { get; set; } = null!;
@@ -55,6 +57,12 @@ public partial class OtherDocumentsContext : DbContext
             entity.Property(e => e.OtherDocument_TypeID);
             entity.Property(e => e.UploadedOn).HasColumnType("datetime").HasDefaultValueSql("(getdate())");
             entity.Property(e => e.UploadedBy).HasMaxLength(150).HasDefaultValue("");
+        });
+
+        modelBuilder.Entity<FldFolder>(entity =>
+        {
+            entity.HasKey(e => e.FLD_FolderID).HasName("PK_FLD_Folder");
+            entity.Property(e => e.FLD_FolderID).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<OtherDocument_Blob>(entity =>

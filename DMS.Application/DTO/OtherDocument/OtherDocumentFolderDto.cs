@@ -1,0 +1,61 @@
+using DMS.Application.DTO.Features;
+
+namespace DMS.Application.DTO.OtherDocument;
+
+public class FolderItem
+{
+    public long FLD_FolderID { get; set; }
+    public int VesselID { get; set; }
+    public string? VesselName { get; set; }
+    public long? ParentID { get; set; }
+    public string FolderName { get; set; } = "";
+    public string Scope { get; set; } = "";
+    public string? OwnerUserID { get; set; }
+    public string? ViewRoles { get; set; }
+    public string? EditRoles { get; set; }
+    /// <summary>The Other Documents filed in this folder.</summary>
+    public int FileCount { get; set; }
+    public bool CanEdit { get; set; }
+}
+
+    public sealed record SaveFolder(long? ParentId, string Name, string Scope, int? VesselId, string? ViewRoles, string? EditRoles);
+
+    /// <summary>An Other Document as shown in a folder (OtherDocumentMaster.FLD_FolderID).</summary>
+    public class FolderDocument
+    {
+        public long OtherDocumentMasterID { get; set; }
+
+        /// <summary>The vessel the document is about; -2 for an office document added without a vessel.</summary>
+        public int VesselID { get; set; }
+        public string? VesselName { get; set; }
+        public long? FLD_FolderID { get; set; }
+        public string? FolderName { get; set; }
+        /// <summary>OtherDocumentMaster.IsForOfficeOnly: added at the office and kept there, never sent to a vessel.</summary>
+        public bool IsForOfficeOnly { get; set; }
+
+        /// <summary>Same as IsForOfficeOnly (the name the web app reads).</summary>
+        public bool IsOfficeOnly => IsForOfficeOnly;
+        public long? OtherDocument_TypeID { get; set; }
+        public string? DocumentType { get; set; }
+        public string? DocumentNumber { get; set; }
+        public string? DocumentTitle { get; set; }
+        public string? Status { get; set; }
+        public string? Reference { get; set; }
+        public string? Comments { get; set; }
+        public DateTime? UploadedOn { get; set; }
+        public string? UploadedBy { get; set; }
+        public string? Origin { get; set; }
+        public int FileCount { get; set; }
+        public long? FirstFileID { get; set; }
+        public bool IsCertificate { get; set; }
+        public DateTime? ExpiryDate { get; set; }
+    }
+
+    /// <summary>
+    /// A new document added at the office. VesselId = the vessel it is about (the selected vessel); without one it is
+    /// stored with VesselID -2. Either way it is marked IsForOfficeOnly = 1 and never sent to a vessel.
+    /// </summary>
+    public sealed record NewFolderDocument(long TypeId, string DocumentNumber, string Title, string? Status, string? Reference,
+        string? Comments, int? VesselId, List<UploadedFile> Files);
+
+    public sealed record MoveDocument(long? FolderId);

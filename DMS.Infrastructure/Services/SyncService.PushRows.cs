@@ -64,7 +64,7 @@ public partial class SyncService
         {
             long? folder = row.Row.TryGetValue("FLD_FolderID", out var f) && f.ValueKind == JsonValueKind.Number ? f.GetInt64() : null;
             var updated = await db.ExecuteAsync(
-                "UPDATE dbo.OtherDocumentMaster SET FLD_FolderID = @f WHERE OtherDocumentMasterID = @k AND VesselID = @v",
+                "UPDATE dbo.OtherDocumentMaster SET FLD_FolderID = @f WHERE OtherDocumentMasterID = @k AND VesselID = @v AND ISNULL(IsForOfficeOnly, 0) = 0",
                 ("@f", folder), ("@k", row.Key), ("@v", vesselId));
             return updated == 1 ? null : $"Document {row.Key} is not this vessel's document at the office.";
         }

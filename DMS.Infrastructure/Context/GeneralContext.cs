@@ -1,4 +1,5 @@
 ﻿using DMS.Data.EF.Models;
+using DMS.Application.DTO.Features;
 using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Context;
@@ -26,6 +27,8 @@ public partial class GeneralContext : DbContext
 
     public virtual DbSet<VslStaff> VslStaffs { get; set; }
 
+    public virtual DbSet<AckPendingRow> AckPendingRows { get; set; } = null!;
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)
@@ -34,6 +37,11 @@ public partial class GeneralContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AckPendingRow>(entity =>
+        {
+            entity.HasNoKey();
+            entity.ToView(null);
+        });
         modelBuilder.Entity<GenErrorHqLog>(entity =>
         {
             entity.Property(e => e.GenErrorHqLogId).ValueGeneratedNever();
@@ -42,6 +50,12 @@ public partial class GeneralContext : DbContext
             entity.Property(e => e.FunctionName).HasDefaultValue("");
             entity.Property(e => e.LoggedInUserId).HasDefaultValue("");
             entity.Property(e => e.PageName).HasDefaultValue("");
+        });
+
+        modelBuilder.Entity<AckPendingRow>(entity =>
+        {
+            entity.HasNoKey();
+            entity.ToView(null);
         });
 
         modelBuilder.Entity<GenErrorVslLog>(entity =>

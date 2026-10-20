@@ -20,6 +20,9 @@ public partial class OtherDocument_Blob
     [Column("VesselID")]
     public int VesselID { get; set; }
 
+    /// <summary>Same as the document's OtherDocumentMaster.IsForOfficeOnly: 1 = never sent to a vessel.</summary>
+    public int IsForOfficeOnly { get; set; }
+
     [StringLength(150)]
     public string? Description { get; set; }
 

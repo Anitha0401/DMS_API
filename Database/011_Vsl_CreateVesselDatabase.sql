@@ -145,6 +145,9 @@ BEGIN
 
         SET @where = CASE WHEN COL_LENGTH(N'dbo.' + QUOTENAME(@table), 'VesselID') IS NOT NULL
                           THEN N' WHERE VesselID IN (-1, @VesselID)' ELSE N'' END;
+        -- Office-only records (Other Documents added at the office, 017) stay at the office.
+        IF COL_LENGTH(N'dbo.' + QUOTENAME(@table), 'IsForOfficeOnly') IS NOT NULL
+            SET @where = CASE WHEN @where = N'' THEN N' WHERE' ELSE @where + N' AND' END + N' ISNULL(IsForOfficeOnly, 0) = 0';
         SET @sql = N'INSERT ' + @db + N'.dbo.' + QUOTENAME(@table) + N' (' + @cols + N')
 SELECT ' + @select + N' FROM dbo.' + QUOTENAME(@table) + @where + N';
 SET @rows = @@ROWCOUNT;';
@@ -183,7 +186,8 @@ IF OBJECT_ID(N''dbo.FLD_Folder'', N''U'') IS NOT NULL AND COL_LENGTH(N''dbo.FLD_
 IF OBJECT_ID(N''dbo.V_Vessel'', N''U'') IS NOT NULL AND COL_LENGTH(N''dbo.V_Vessel'', N''TableIDstart'') IS NULL
     ALTER TABLE dbo.V_Vessel ADD TableIDstart bigint NULL;
 
--- Crew: the ship keeps the office Vsl_StaffID in Fleet_CrewID too, and stores password hashes (longer than plain text).
+-- Crew: the ship keeps the office Vsl_StaffID in Fleet_CrewID too. Passwords are copied as the office holds them
+-- (plain text); the column is only widened so it can also hold a hash if the vessel app stores one later.
 IF OBJECT_ID(N''dbo.Vsl_Staff'', N''U'') IS NOT NULL
 BEGIN
     IF COL_LENGTH(N''dbo.Vsl_Staff'', N''Fleet_CrewID'') IS NULL

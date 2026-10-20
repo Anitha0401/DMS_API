@@ -24,7 +24,7 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
             .FirstOrDefaultAsync(m => m.CIR_MasterID == dto.CIR_MasterID, cancellationToken);
 
         if (master == null)
-            throw new InvalidOperationException($"CIR_Master with ID {dto.CIR_MasterID} not found.");
+            throw new KeyNotFoundException($"Circular {dto.CIR_MasterID} does not exist.");
 
         // Update master fields
         master.CIR_CategoryID = dto.CIR_CategoryID;
@@ -41,73 +41,84 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
 
         _context.CIR_Master.Update(master);
 
-        // Update blob if provided
-        if (dto.CIR_BlobID != 0)
+        try
         {
-            try
+            var blob = await _context.CIR_Blob
+                .FirstOrDefaultAsync(b => b.CIR_BlobID == dto.CIR_BlobID, cancellationToken);
+
+            if (blob != null)
             {
-                var blob = await _context.CIR_Blob
-                    .FirstOrDefaultAsync(b => b.CIR_BlobID == dto.CIR_BlobID, cancellationToken);
-
-                if (blob != null)
-                {
-                    if (dto.BlobContents != null && dto.BlobContents.Length > 0)
-                    {
-                        blob.BlobContents = dto.BlobContents;
-                        blob.BlobSize = dto.BlobSize;
-                        blob.FileName = dto.FileName;
-                        blob.FileType = dto.FileType;
-                        blob.OriginalFileType = dto.OriginalFileType;
-                        blob.AddedOn = DateTime.UtcNow;
-                    }
-
-                    blob.Description = dto.Description ?? blob.Description;
-
-                    _context.CIR_Blob.Update(blob);
-                }
-                else if (dto.BlobContents != null && dto.BlobContents.Length > 0)
-                {
-                    // create new blob entry linked to master
-                    var newBlob = new CIR_Blob
-                    {
-                        CIR_MasterID = dto.CIR_MasterID,
-                        Description = dto.Description ?? string.Empty,
-                        FileName = dto.FileName,
-                        FileType = dto.FileType,
-                        OriginalFileType = dto.OriginalFileType,
-                        BlobSize = dto.BlobSize,
-                        BlobContents = dto.BlobContents,
-                        AddedOn = DateTime.UtcNow
-                    };
-
-                    await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
-                }
-            }
-            catch (SqlNullValueException sqlNullEx)
-            {
-                // Defensive fallback when DB returns a DBNull for a column that the model expects non-null.
-                // If client provided new blob contents, create a new blob record instead of failing.
                 if (dto.BlobContents != null && dto.BlobContents.Length > 0)
                 {
-                    var newBlob = new CIR_Blob
-                    {
-                        CIR_MasterID = dto.CIR_MasterID,
-                        Description = dto.Description ?? string.Empty,
-                        FileName = dto.FileName,
-                        FileType = dto.FileType,
-                        OriginalFileType = dto.OriginalFileType,
-                        BlobSize = dto.BlobSize,
-                        BlobContents = dto.BlobContents,
-                        AddedOn = DateTime.UtcNow
-                    };
-
-                    await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
+                    blob.BlobContents = dto.BlobContents;
+                    blob.BlobSize = dto.BlobSize;
+                    blob.FileName = dto.FileName;
+                    blob.FileType = dto.FileType;
+                    blob.OriginalFileType = dto.OriginalFileType;
+                    blob.AddedOn = DateTime.UtcNow;
                 }
                 else
                 {
-                    // Re-throw with more context so caller can inspect the cause and DB state.
-                    throw new InvalidOperationException($"Error reading CIR_Blob with ID {dto.CIR_BlobID}: {sqlNullEx.Message}", sqlNullEx);
+                    blob.FileName = null;
+                    blob.FileType = null;
+                    blob.OriginalFileType = null;
+                    blob.BlobSize = null;
+                    blob.BlobContents = null;
+                    blob.Cloud_ContainerName = null;
+                    blob.Cloud_Directory = null;
+                    blob.HQ_Storage_Option = null;
+                    blob.HQ_DatabaseName = null;
+                    blob.HQ_Local_Folder = null;
+                    blob.VSL_Storage_Option = null;
+                    blob.VSL_DatabaseName = null;
+                    blob.VSL_Local_Folder = null;
                 }
+                blob.Description = dto.Description ?? blob.Description;
+
+                _context.CIR_Blob.Update(blob);
+            }
+            else if (dto.BlobContents != null && dto.BlobContents.Length > 0)
+            {
+                // create new blob entry linked to master
+                var newBlob = new CIR_Blob
+                {
+                    CIR_MasterID = dto.CIR_MasterID,
+                    Description = dto.Description ?? string.Empty,
+                    FileName = dto.FileName,
+                    FileType = dto.FileType,
+                    OriginalFileType = dto.OriginalFileType,
+                    BlobSize = dto.BlobSize,
+                    BlobContents = dto.BlobContents,
+                    AddedOn = DateTime.UtcNow
+                };
+
+                await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
+            }
+        }
+        catch (SqlNullValueException sqlNullEx)
+        {
+            // Defensive fallback when DB returns a DBNull for a column that the model expects non-null.
+            // If client provided new blob contents, create a new blob record instead of failing.
+            if (dto.BlobContents != null && dto.BlobContents.Length > 0)
+            {
+                var newBlob = new CIR_Blob
+                {
+                    CIR_MasterID = dto.CIR_MasterID,
+                    Description = dto.Description ?? string.Empty,
+                    FileName = dto.FileName,
+                    FileType = dto.FileType,
+                    OriginalFileType = dto.OriginalFileType,
+                    BlobSize = dto.BlobSize,
+                    BlobContents = dto.BlobContents,
+                    AddedOn = DateTime.UtcNow
+                };
+
+                await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
+            }
+            else
+            {
+                // Re-throw with more context so caller can inspect the cause and DB state.
+                throw new InvalidOperationException($"Error reading CIR_Blob with ID {dto.CIR_BlobID}: {sqlNullEx.Message}", sqlNullEx);
             }
         }
 

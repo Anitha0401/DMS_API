@@ -478,9 +478,13 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
                         BlobColumn = info.BlobColumn,
                     };
                     if (rows.TryGetValue(key, out var row) && BelongsToVessel(info, row, vesselId))
+                    {
+                        // An office-side flag: the ship never needs it (and older ship databases have no such column).
+                        row.Remove(OfficeOnlyColumn);
                         change.Row = row;
+                    }
                     else
-                        change.Action = "D"; // deleted at the office, or now for another vessel
+                        change.Action = "D"; // deleted at the office, now for another vessel, or office only
                     changes.Add(change);
                 }
             }
@@ -599,9 +603,17 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
         return result;
     }
 
-    /// <summary>A record goes to a vessel when it is for that vessel, or for all of them (VesselID -1, or no vessel column).</summary>
+    /// <summary>Records with this column set to 1 stay at the office (Other Documents added there, Database/017).</summary>
+    private const string OfficeOnlyColumn = "IsForOfficeOnly";
+
+    /// <summary>
+    /// A record goes to a vessel when it is for that vessel, or for all of them (VesselID -1, or no vessel column),
+    /// and it is not office only (IsForOfficeOnly = 1).
+    /// </summary>
     private static bool BelongsToVessel(SyncTableInfo info, Dictionary<string, object?> row, int vesselId)
     {
+        if (row.TryGetValue(OfficeOnlyColumn, out var officeOnly) && officeOnly != null && Convert.ToInt64(officeOnly) == 1)
+            return false;
         if (info.AllVessels || !info.HasVesselColumn) return true;
         if (!row.TryGetValue("VesselID", out var value) || value == null) return true;
         var recordVessel = Convert.ToInt64(value);
@@ -1042,6 +1054,7 @@ UPDATE dbo.Sync_Vessel
                 from b in _other.OtherDocument_Blob.AsNoTracking()
                 join m in _other.OtherDocumentMaster.AsNoTracking() on b.OtherDocumentMasterID equals m.OtherDocumentMasterID
                 where b.OtherDocument_BlobID == blobId && (m.VesselID == vesselId || m.VesselID == -1) && (m.IsDeleted ?? 0) != 1
+                      && m.IsForOfficeOnly != 1
                 select new { b.BlobContents, b.FileType, b.OriginalFileType, b.FileName })
             .FirstOrDefaultAsync();
         if (f?.BlobContents == null) return null;
@@ -1065,7 +1078,7 @@ UPDATE dbo.Sync_Vessel
             })
             .ToListAsync();
         var documents = await _other.OtherDocumentMaster.AsNoTracking()
-            .Where(m => (m.VesselID == vesselId || m.VesselID == -1) && (m.IsDeleted ?? 0) != 1)
+            .Where(m => (m.VesselID == vesselId || m.VesselID == -1) && (m.IsDeleted ?? 0) != 1 && m.IsForOfficeOnly != 1)
             .OrderBy(m => m.OtherDocumentMasterID)
             .Select(m => new SyncOtherDocumentMasterRow
             {

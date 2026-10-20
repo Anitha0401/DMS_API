@@ -24,5 +24,7 @@ public partial class OtherDocument_Type
 
     public int? IsActive { get; set; }
 
+    public int? IsCertificate { get; set; }
+
     public int SortOrder { get; set; }
 }

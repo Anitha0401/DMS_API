@@ -1,6 +1,7 @@
 using AutoMapper;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.OtherDocument;
 using DMS.Data.EF.Query.Circulars;
 using MediatR;
@@ -26,7 +27,9 @@ namespace DMS.Data.EF.Handler
             {
                 var dto = request.createOtherDocument;
                 var origin = string.IsNullOrWhiteSpace(dto.Origin) ? "HQ" : dto.Origin.Trim().ToUpperInvariant();
-                var vesselId = dto.VesselID;
+                // Added at the office: kept at the office (never sent to a vessel), filed under the selected vessel.
+                var isForOfficeOnly = origin == "HQ" ? 1 : 0;
+                var vesselId = isForOfficeOnly == 1 && dto.VesselID <= 0 ? SqlDb.OfficeOnly : dto.VesselID;
                 var nextMasterId = await _dbContext.NextIdAsync<OtherDocumentMaster>(origin, vesselId, ct: cancellationToken);
 
                 var otherDocument = new OtherDocumentMaster
@@ -34,6 +37,7 @@ namespace DMS.Data.EF.Handler
                     OtherDocumentMasterID = nextMasterId,
                     Origin = origin,
                     VesselID = vesselId,
+                    IsForOfficeOnly = isForOfficeOnly,
                     OtherDocument_TypeID = (int?)dto.OtherDocument_TypeID,
                     DocumentNumber = dto.DocumentNumber ?? dto.DocumentTitle ?? "DOC-" + nextMasterId,
                     DocumentTitle = dto.DocumentTitle ?? dto.Title ?? string.Empty,
@@ -57,6 +61,7 @@ namespace DMS.Data.EF.Handler
                     OtherDocumentMasterID = otherDocument.OtherDocumentMasterID,
                     Origin = origin,
                     VesselID = vesselId,
+                    IsForOfficeOnly = isForOfficeOnly,
                     Description = dto.Description ?? dto.Comments ?? dto.DocumentTitle ?? dto.Title,
                     FileName = dto.FileName,
                     FileType = dto.FileType,

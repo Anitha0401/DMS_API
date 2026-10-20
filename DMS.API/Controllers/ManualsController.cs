@@ -1,17 +1,16 @@
-﻿using DMS.Application.Interface;
-using DMS.Application.DTO.Manuals;
-using DMS.Data.EF.Models.Manuals;
+﻿using DMS.Application.DTO.Manuals;
+using DMS.Application.Interface;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;
 
 [Route("api/[controller]")]
-public class DMSController : DmsControllerBase
+public class ManualsController : DmsControllerBase
 {
-    private readonly IDMSService _service;
-    private readonly ILogger<DMSController> _logger;
+    private readonly IManualService _service;
+    private readonly ILogger<ManualsController> _logger;
 
-    public DMSController(IDMSService service, ILogger<DMSController> logger)
+    public ManualsController(IManualService service, ILogger<ManualsController> logger)
     {
         _service = service;
         _logger = logger;
@@ -96,6 +95,13 @@ public class DMSController : DmsControllerBase
         var result = await _service.GetUserFavouiteManualListAsync(CurrentUserId);
 
         return Ok(result);
+    }
+
+    [HttpPost("RemoveFromFavourite")]
+    public async Task<IActionResult> RemoveFromFavourite(long dm_ManualID)
+    {
+        await _service.RemoveFromFavouriteAsync(dm_ManualID, CurrentUserId);
+        return Ok();
     }
 
     // Compare Version
@@ -211,7 +217,7 @@ public class DMSController : DmsControllerBase
     [HttpPost("AddManual")]
     public async Task<ActionResult<CreateManualResultDto>> AddManual(CreateManualDto manual)
     {
-        // Validation
+        manual.CreatedBy = CurrentUserId; // from the token, never from the request
 
         var DM_ManualID = await _service.AddDmManualAsync(manual);
 
@@ -221,8 +227,7 @@ public class DMSController : DmsControllerBase
     [HttpPost("EditManual")]
     public async Task<ActionResult> EditManual(EditManualDto manual)
     {
-        // Validation
-        //Call Edit
+        SetActingUser(manual);
         await _service.UpdateDmManualAsync(manual);
 
         return Ok();
@@ -231,7 +236,7 @@ public class DMSController : DmsControllerBase
     [HttpPost("ApproveManual")]
     public async Task<ActionResult> ApproveManual(ManualApproveDto request)
     {
-        // Validation
+        SetActingUser(request);
 
         var result = await _service.ApproveManualAsync(request, false);
 
@@ -241,9 +246,9 @@ public class DMSController : DmsControllerBase
     [HttpPost("PublishManual")]
     public async Task<ActionResult> PublishManual(ManualApproveDto request)
     {
-        // Validation
+        SetActingUser(request);
 
-        var result = await _service.ApproveManualAsync(request, false);
+        var result = await _service.PublishManualAsync(request);
 
         return Ok(result);
     }
@@ -251,7 +256,7 @@ public class DMSController : DmsControllerBase
     [HttpPost("SendBackManual")]
     public async Task<ActionResult> SendBackManual(ManualApproveDto request)
     {
-        // Validation
+        SetActingUser(request);
 
         var DM_ManualVersionID = await _service.ApproveManualAsync(request, true);
 
@@ -264,7 +269,7 @@ public class DMSController : DmsControllerBase
         // object
         // Validation
 
-        await _service.DeleteDmManualAsync(dm_ManualID);
+        await _service.DeleteDmManualAsync(dm_ManualID, CurrentUserId);
 
         return Ok();
     }
@@ -274,7 +279,7 @@ public class DMSController : DmsControllerBase
     {
         // Validation
 
-        await _service.DeleteDmManualVersionAsync(dm_ManualID);
+        await _service.DeleteDmManualVersionAsync(dm_ManualID, CurrentUserId);
 
         return Ok();
     }
@@ -294,7 +299,6 @@ public class DMSController : DmsControllerBase
     [HttpPost("AddToFavourite")]
     public async Task<ActionResult> AddToFavourite(long dm_ManualID, string? userID)
     {
-        // Awaited: before, the save ran after the response and its errors were lost.
         await _service.AddToFavouriteAsync(dm_ManualID, CurrentUserId);
         return Ok();
     }
@@ -303,8 +307,15 @@ public class DMSController : DmsControllerBase
     [HttpGet("GetManualNotifications")]
     public async Task<IActionResult> GetManualNotifications(int limit = 10)
     {
-        var notifications = await _service.GetManualNotificationListAsync(limit);
+        var notifications = await _service.GetManualNotificationListAsync(limit, CurrentUserId);
         return Ok(notifications);
+    }
+
+    /// <summary>The user acting on a manual always comes from the login token; a UserID or role sent in the body is ignored.</summary>
+    private void SetActingUser(ManualBaseDto dto)
+    {
+        dto.UserID = CurrentUserId;
+        dto.UserRole = CurrentUserRole;
     }
 
     // Mark notification as read
@@ -314,7 +325,7 @@ public class DMSController : DmsControllerBase
     {
         var id = notificationID ?? body?.NotificationId;
         if (id is null) return BadRequest("notificationId is required.");
-        return await _service.MarkNotificationReadAsync(id.Value) ? NoContent() : NotFound();
+        return await _service.MarkNotificationReadAsync(id.Value, CurrentUserId) ? NoContent() : NotFound();
     }
 }
 

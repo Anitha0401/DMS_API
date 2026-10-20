@@ -1,7 +1,8 @@
 using DMS.Application.DTO.Features;
 using DMS.Application.Interface;
+using DMS.Data.EF.Features;
 
-namespace DMS.Data.EF.Features;
+namespace DMS.Infrastructure.Services;
 
 /// <summary>
 /// Feature 4: the suggestions workflow.

@@ -1,5 +1,7 @@
 using DMS.Data.EF.Context;
 using DMS.Application.DTO.Circulars;
+using DMS.Application.Interface;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -12,12 +14,14 @@ public class CIRGeneralQueries : ICIRGeneralQueries
     private readonly CircularsContext _dbContext;
     private readonly GeneralContext _generalContext;
     private readonly IConfiguration _configuration;
+    private readonly ICurrentUser _currentUser;
 
-    public CIRGeneralQueries(CircularsContext dbContext, GeneralContext generalContext, IConfiguration config)
+    public CIRGeneralQueries(CircularsContext dbContext, GeneralContext generalContext, IConfiguration config, ICurrentUser currentUser)
     {
         _dbContext = dbContext ?? throw new ArgumentNullException(nameof(_dbContext));
         _generalContext = generalContext ?? throw new ArgumentNullException(nameof(_generalContext));
         _configuration = config ?? throw new ArgumentNullException("config");
+        _currentUser = currentUser;
     }
 
     public async Task<List<CIR_TreeviewEntity>> GetCIRTreeviewAsync(string userID, string circularType)
@@ -118,6 +122,19 @@ public class CIRGeneralQueries : ICIRGeneralQueries
         }
     }
 
+    /// <summary>The newest circular/alert notifications of the last 30 days meant for everyone ('') or for this user.</summary>
+    public async Task<List<VwCIRNotification>> GetNotificationList(string userID, int limit)
+    {
+        var since = DateTime.Now.AddDays(-30);
+        return await _dbContext
+                        .VwCIRNotification
+                        .Where(x => x.CreatedDate >= since && (x.UserID == null || x.UserID == "" || x.UserID == userID))
+                        .OrderByDescending(x => x.CreatedDate)
+                        .Take(NotificationReads.ClampLimit(limit))
+                        .AsNoTracking()
+                        .ToListAsync();
+    }
+
     public async Task<List<VwCIRNotification>> GetNotificationList()
     {
         try
@@ -216,7 +233,7 @@ public class CIRGeneralQueries : ICIRGeneralQueries
                 CIR_MasterID = cir_MasterID,
                 Activity = activity,
                 Remarks = remarks,
-                UserName = "",
+                UserName = _currentUser.UserId,
                 UserRank = "",
                 LogDate = DateTime.Now,
             };

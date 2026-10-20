@@ -1,15 +1,14 @@
-using DMS.Application.Interface;
-using DMS.Data.EF;
-using DMS.Data.EF.Context;
-using DMS.Application.DTO.Circulars;
-using DMS.Application.DTO.Features;
-using DMS.Application.DTO.OtherDocument;
-using DMS.Data.EF.Features;
-using DMS.Data.EF.Models.OtherDocument;
-using DMS.Data.EF.Query.Circulars;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using DMS.Application.DTO.Features;
+using DMS.Application.DTO.OtherDocument;
+using DMS.Application.Interface;
+using DMS.Data.EF;
+using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
+using DMS.Data.EF.Models.OtherDocument;
+using DMS.Data.EF.Query.Circulars;
 
 namespace DMS.Application;
 
@@ -19,13 +18,15 @@ public class OtherDocumentService : IOtherDocumentService
     private readonly ILogger<OtherDocumentService> _logger;
     private readonly IMediator _mediator;
     private readonly SqlDb _db;
+    private readonly GeneralContext _generalContext;
 
-    public OtherDocumentService(OtherDocumentsContext context, ILogger<OtherDocumentService> logger, IMediator mediator, SqlDb db)
+    public OtherDocumentService(OtherDocumentsContext context, ILogger<OtherDocumentService> logger, IMediator mediator, SqlDb db, GeneralContext generalContext)
     {
         _dbContext = context;
         _logger = logger;
         _mediator = mediator;
         _db = db;
+        _generalContext = generalContext;
     }
 
     public async Task<List<OtherDocument_Type>> GetDocumentTypesAsync()
@@ -177,15 +178,9 @@ public class OtherDocumentService : IOtherDocumentService
     {
         public string? Origin { get; set; }
         public string? CreatedBy { get; set; }
+        public int? SortOrder { get; set; }
         public bool CanView { get; set; }
     }
-
-    private const string FolderSelect = @"
-SELECT f.FLD_FolderID, f.Origin, f.VesselID, CASE WHEN f.VesselID > 0 THEN v.VslName WHEN f.VesselID = -1 THEN 'All vessels' ELSE 'Office' END AS VesselName,
-       f.ParentID, f.FolderName, f.Scope, f.OwnerUserID, f.ViewRoles, f.EditRoles, f.CreatedBy,
-       (SELECT COUNT(*) FROM dbo.OtherDocumentMaster d WHERE d.FLD_FolderID = f.FLD_FolderID AND ISNULL(d.IsDeleted, 0) <> 1) AS FileCount
-  FROM dbo.FLD_Folder f
-  LEFT JOIN dbo.V_Vessel v ON v.VesselID = f.VesselID";
 
     private static bool IsAdmin(OfficeUser user) => string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase);
 
@@ -225,21 +220,39 @@ SELECT f.FLD_FolderID, f.Origin, f.VesselID, CASE WHEN f.VesselID > 0 THEN v.Vsl
 
     private async Task<FolderRow?> FolderAsync(long id, OfficeUser user)
     {
-        var f = await _db.FirstAsync<FolderRow>(FolderSelect + " WHERE f.FLD_FolderID = @id AND f.IsDeleted = 0", ("@id", id));
+        var f = (await LoadFolderRowsAsync()).FirstOrDefault(x => x.FLD_FolderID == id);
         return f == null ? null : Rights(f, user);
     }
 
     public async Task<List<FolderItem>> GetFolderTreeAsync(OfficeUser user)
     {
-        var rows = await _db.QueryAsync<FolderRow>(FolderSelect + @"
-                             WHERE f.IsDeleted = 0
-                               AND (f.Scope IN ('Company', 'Vessel')
-                                    OR (f.Scope = 'Department' AND (f.VesselID > 0 OR f.OwnerUserID = @dept OR @admin = 1))
-                                    OR (f.Scope = 'Personal' AND f.VesselID = -2 AND f.OwnerUserID = @me))
-                             ORDER BY CASE f.Scope WHEN 'Company' THEN 0 WHEN 'Vessel' THEN 1 WHEN 'Department' THEN 2 ELSE 3 END,
-                                      f.SortOrder, f.FolderName",
-                            ("@dept", user.Dept ?? ""), ("@admin", IsAdmin(user) ? 1 : 0), ("@me", user.UserId));
-        return rows.Select(r => Rights(r, user)).Where(r => r.CanView).Cast<FolderItem>().ToList();
+        var rows = await LoadFolderRowsAsync();
+        return rows
+            .Where(f => f.Scope is "Company" or "Vessel"
+                || (f.Scope == "Department" && (f.VesselID > 0 || f.OwnerUserID == user.Dept || IsAdmin(user)))
+                || (f.Scope == "Personal" && f.VesselID == SqlDb.OfficeOnly && f.OwnerUserID == user.UserId))
+            .OrderBy(f => f.Scope == "Company" ? 0 : f.Scope == "Vessel" ? 1 : f.Scope == "Department" ? 2 : 3)
+            .ThenBy(f => f.SortOrder).ThenBy(f => f.FolderName)
+            .Select(f => Rights(f, user)).Where(f => f.CanView).Cast<FolderItem>().ToList();
+    }
+
+    private async Task<List<FolderRow>> LoadFolderRowsAsync()
+    {
+        var folders = await _dbContext.FldFolders.AsNoTracking().Where(f => f.IsDeleted == 0).ToListAsync();
+        var folderIds = folders.Select(f => f.FLD_FolderID).ToList();
+        var fileCounts = await _dbContext.OtherDocumentMaster.AsNoTracking()
+            .Where(d => d.FLD_FolderID.HasValue && folderIds.Contains(d.FLD_FolderID.Value) && (d.IsDeleted == null || d.IsDeleted != 1))
+            .GroupBy(d => d.FLD_FolderID!.Value).Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
+        var vessels = await _generalContext.VVessels.AsNoTracking().ToDictionaryAsync(v => v.VesselID, v => v.VslName);
+        return folders.Select(f => new FolderRow
+        {
+            FLD_FolderID = f.FLD_FolderID, Origin = f.Origin, VesselID = f.VesselID,
+            VesselName = f.VesselID > 0 ? vessels.GetValueOrDefault(f.VesselID) : f.VesselID == -1 ? "All vessels" : "Office",
+            ParentID = f.ParentID, FolderName = f.FolderName, Scope = f.Scope, OwnerUserID = f.OwnerUserID,
+            ViewRoles = f.ViewRoles, EditRoles = f.EditRoles, CreatedBy = f.CreatedBy,
+            SortOrder = f.SortOrder, FileCount = fileCounts.GetValueOrDefault(f.FLD_FolderID)
+        }).ToList();
     }
 
     public async Task<(long? Id, string? Error)> SaveFolderAsync(long? folderId, SaveFolder request, OfficeUser user)
@@ -347,26 +360,11 @@ SELECT f.FLD_FolderID, f.Origin, f.VesselID, CASE WHEN f.VesselID > 0 THEN v.Vsl
 
     // ------------------------------------------------------------------ Other Documents in folders
     //
-    // A document added at the office is office only: VesselID -2 (never sent to a vessel), with RelatedVesselID = the
-    // vessel it is about, so it shows under that vessel here. Documents from a vessel (or sent to vessels before)
-    // keep their VesselID and are shown under that vessel too.
-
-    private const string DocumentSelect = @"
-SELECT TOP (2000) d.OtherDocumentMasterID, d.VesselID, d.RelatedVesselID,
-       CASE WHEN d.VesselID > 0 THEN v.VslName WHEN d.VesselID = -1 THEN 'All vessels'
-            WHEN d.RelatedVesselID > 0 THEN rv.VslName ELSE 'Office' END AS VesselName,
-       d.FLD_FolderID, fo.FolderName, d.OtherDocument_TypeID, t.DocumentType, d.DocumentNumber, d.DocumentTitle, d.Status, d.Reference, d.Comments,
-       d.UploadedOn, d.UploadedBy, d.Origin, CAST(ISNULL(t.IsCertificate, 0) AS bit) AS IsCertificate, d.ExpiryDate,
-       (SELECT COUNT(*) FROM dbo.OtherDocument_Blob b WHERE b.OtherDocumentMasterID = d.OtherDocumentMasterID) AS FileCount,
-       (SELECT MIN(b.OtherDocument_BlobID) FROM dbo.OtherDocument_Blob b WHERE b.OtherDocumentMasterID = d.OtherDocumentMasterID) AS FirstFileID
-  FROM dbo.OtherDocumentMaster d
-  LEFT JOIN dbo.OtherDocument_Type t ON t.OtherDocument_TypeID = d.OtherDocument_TypeID
-  LEFT JOIN dbo.V_Vessel v ON v.VesselID = d.VesselID
-  LEFT JOIN dbo.V_Vessel rv ON rv.VesselID = d.RelatedVesselID
-  LEFT JOIN dbo.FLD_Folder fo ON fo.FLD_FolderID = d.FLD_FolderID AND fo.IsDeleted = 0";
+    // A document added at the office is office only: IsForOfficeOnly = 1, never sent to a vessel. It keeps the vessel it is
+    // about as its VesselID (-2 when added without a vessel), so it is listed under that vessel with the vessel's own documents.
 
     /// <summary>Documents that belong under this vessel: its own, those for all vessels, and office-only ones about it.</summary>
-    private const string ForVessel = "(d.VesselID IN (@v, -1) OR (d.VesselID = -2 AND d.RelatedVesselID = @v))";
+    private const string ForVessel = "d.VesselID IN (@v, -1)";
 
     /// <summary>A folder's documents; folderId null = documents not in a folder (or in a folder that no longer exists).</summary>
     public async Task<List<FolderDocument>> GetFolderDocumentsAsync(long? folderId, int? vesselId, OfficeUser user)
@@ -375,41 +373,71 @@ SELECT TOP (2000) d.OtherDocumentMasterID, d.VesselID, d.RelatedVesselID,
         {
             var folder = await FolderAsync(folderId.Value, user);
             if (folder is not { CanView: true }) return new List<FolderDocument>();
-            return await _db.QueryAsync<FolderDocument>(DocumentSelect + $@"
- WHERE ISNULL(d.IsDeleted, 0) <> 1 AND d.FLD_FolderID = @f AND (@v IS NULL OR {ForVessel})
- ORDER BY t.DocumentType, d.DocumentNumber", ("@f", folderId), ("@v", vesselId));
+            var documents = await _dbContext.OtherDocumentMaster.AsNoTracking()
+                .Where(d => (d.IsDeleted == null || d.IsDeleted != 1) && d.FLD_FolderID == folderId)
+                .ToListAsync();
+            return await ProjectDocumentsAsync(documents, vesselId, orderByType: true);
         }
-        return await _db.QueryAsync<FolderDocument>(DocumentSelect + $@"
- WHERE ISNULL(d.IsDeleted, 0) <> 1 AND (@v IS NULL OR {ForVessel}) AND (@v IS NOT NULL OR d.VesselID <> -2)
-   AND fo.FLD_FolderID IS NULL
- ORDER BY COALESCE(d.UploadedOn, d.CreatedDate) DESC", ("@v", vesselId));
+        var unfiled = await _dbContext.OtherDocumentMaster.AsNoTracking()
+            .Where(d => (d.IsDeleted == null || d.IsDeleted != 1) && d.FLD_FolderID == null && (vesselId.HasValue || d.VesselID != SqlDb.OfficeOnly))
+            .ToListAsync();
+        return await ProjectDocumentsAsync(unfiled, vesselId, orderByType: false);
     }
 
     /// <summary>Every document under a vessel, in any folder or none, without those in folders this user may not open.</summary>
     public async Task<List<FolderDocument>> GetVesselDocumentsAsync(int vesselId, OfficeUser user)
     {
         var visible = (await GetFolderTreeAsync(user)).Select(f => f.FLD_FolderID).ToHashSet();
-        var docs = await _db.QueryAsync<FolderDocument>(DocumentSelect + $@"
- WHERE ISNULL(d.IsDeleted, 0) <> 1 AND {ForVessel}
- ORDER BY COALESCE(d.UploadedOn, d.CreatedDate) DESC", ("@v", vesselId));
+        var entities = await _dbContext.OtherDocumentMaster.AsNoTracking()
+            .Where(d => (d.IsDeleted == null || d.IsDeleted != 1) && (d.VesselID == vesselId || d.VesselID == -1))
+            .ToListAsync();
+        var docs = await ProjectDocumentsAsync(entities, vesselId, orderByType: false);
         foreach (var d in docs)
             if (d.FLD_FolderID != null && d.FolderName == null) d.FLD_FolderID = null; // its folder was deleted
         return docs.Where(d => d.FLD_FolderID == null || visible.Contains(d.FLD_FolderID.Value)).ToList();
     }
 
+    private async Task<List<FolderDocument>> ProjectDocumentsAsync(List<OtherDocumentMaster> entities, int? vesselId, bool orderByType)
+    {
+        if (vesselId.HasValue)
+            entities = entities.Where(d => d.VesselID == vesselId || d.VesselID == -1).ToList();
+
+        var typeIds = entities.Where(d => d.OtherDocument_TypeID.HasValue).Select(d => d.OtherDocument_TypeID!.Value).Distinct().ToList();
+        var folderIds = entities.Where(d => d.FLD_FolderID.HasValue).Select(d => d.FLD_FolderID!.Value).Distinct().ToList();
+        var types = await _dbContext.OtherDocument_Type.AsNoTracking().Where(t => typeIds.Contains(t.OtherDocument_TypeID)).ToDictionaryAsync(t => t.OtherDocument_TypeID);
+        var folders = await _dbContext.FldFolders.AsNoTracking().Where(f => folderIds.Contains(f.FLD_FolderID) && f.IsDeleted == 0).ToDictionaryAsync(f => f.FLD_FolderID);
+        var vesselNames = await _generalContext.VVessels.AsNoTracking().ToDictionaryAsync(v => v.VesselID, v => v.VslName);
+        var documentIds = entities.Select(d => d.OtherDocumentMasterID).ToList();
+        var blobs = await _dbContext.OtherDocument_Blob.AsNoTracking().Where(b => documentIds.Contains(b.OtherDocumentMasterID)).GroupBy(b => b.OtherDocumentMasterID).ToDictionaryAsync(g => g.Key, g => new { Count = g.Count(), First = g.Min(b => b.OtherDocument_BlobID) });
+
+        var result = entities.Take(2000).Select(d =>
+        {
+            types.TryGetValue(d.OtherDocument_TypeID ?? 0, out var type);
+            folders.TryGetValue(d.FLD_FolderID ?? 0, out var folder);
+            blobs.TryGetValue(d.OtherDocumentMasterID, out var blob);
+            return new FolderDocument { OtherDocumentMasterID = d.OtherDocumentMasterID, VesselID = d.VesselID,
+                IsForOfficeOnly = d.IsForOfficeOnly == 1,
+                VesselName = d.VesselID > 0 ? vesselNames.GetValueOrDefault(d.VesselID) : d.VesselID == -1 ? "All vessels" : "Office",
+                FLD_FolderID = d.FLD_FolderID, FolderName = folder?.FolderName, OtherDocument_TypeID = d.OtherDocument_TypeID,
+                DocumentType = type?.DocumentType, DocumentNumber = d.DocumentNumber, DocumentTitle = d.DocumentTitle,
+                Status = d.Status, Reference = d.Reference, Comments = d.Comments, UploadedOn = d.UploadedOn,
+                UploadedBy = d.UploadedBy, Origin = d.Origin, IsCertificate = type?.IsCertificate == 1,
+                ExpiryDate = d.ExpiryDate, FileCount = blob?.Count ?? 0, FirstFileID = blob?.First };
+        });
+        return (orderByType ? result.OrderBy(d => d.DocumentType).ThenBy(d => d.DocumentNumber) : result.OrderByDescending(d => d.UploadedOn)).ToList();
+    }
+
     /// <summary>
-    /// A document added at the office, in a folder or not. Always office only (VesselID -2): it is never sent to a
-    /// vessel. RelatedVesselID = the folder's vessel, else the vessel chosen.
+    /// A document added at the office, in a folder or not. Always office only (IsForOfficeOnly = 1): it is never sent to a
+    /// vessel. VesselID = the selected vessel (request.VesselId), or -2 when none was chosen.
     /// </summary>
     public async Task<(long? Id, string? Error)> CreateDocumentAsync(long? folderId, NewFolderDocument request, OfficeUser user)
     {
-        int? relatedVessel = request.VesselId is > 0 ? request.VesselId : null;
         if (folderId != null)
         {
             var folder = await FolderAsync(folderId.Value, user);
             if (folder == null) return (null, "Folder not found.");
             if (!folder.CanEdit) return (null, "You cannot add documents to this folder.");
-            if (folder.VesselID > 0) relatedVessel = folder.VesselID;
         }
         var number = (request.DocumentNumber ?? "").Trim();
         var title = (request.Title ?? "").Trim();
@@ -417,12 +445,18 @@ SELECT TOP (2000) d.OtherDocumentMasterID, d.VesselID, d.RelatedVesselID,
         if (title.Length == 0 || title.Length > 500) return (null, "Enter a title of up to 500 characters.");
         if (await _db.ScalarAsync("SELECT 1 FROM dbo.OtherDocument_Type WHERE OtherDocument_TypeID = @t AND ISNULL(IsActive, 1) = 1", ("@t", request.TypeId)) == null)
             return (null, "Choose a document type.");
-        if (relatedVessel != null && await _db.ScalarAsync("SELECT 1 FROM dbo.V_Vessel WHERE VesselID = @v", ("@v", relatedVessel)) == null)
-            return (null, "Vessel not found.");
+
+        // The vessel the document is about: the selected vessel, else -2 (office, no vessel).
+        var vesselId = request.VesselId is > 0 ? request.VesselId.Value : SqlDb.OfficeOnly;
+        if (vesselId > 0 && await _db.ScalarAsync("SELECT 1 FROM dbo.V_Vessel WHERE VesselID = @v", ("@v", vesselId)) == null)
+            return (null, "Choose a vessel that exists.");
+        if (folderId != null && (await FolderAsync(folderId.Value, user))?.VesselID is > 0 and var folderVessel && folderVessel != vesselId)
+            return (null, "That folder belongs to another vessel.");
+
         if (await _db.ScalarAsync(@"SELECT TOP (1) 1 FROM dbo.OtherDocumentMaster WHERE ISNULL(IsDeleted, 0) <> 1
                                       AND OtherDocument_TypeID = @t AND DocumentNumber = @n
-                                      AND (VesselID = ISNULL(@v, -2) OR (VesselID = -2 AND ISNULL(RelatedVesselID, -2) = ISNULL(@v, -2)))",
-                ("@t", request.TypeId), ("@n", number), ("@v", relatedVessel)) != null)
+                                      AND VesselID = @v AND IsForOfficeOnly = 1",
+                ("@t", request.TypeId), ("@n", number), ("@v", vesselId)) != null)
             return (null, $"A document numbered {number} of this type is already there.");
 
         var maxBytes = await MaxFileBytesAsync();
@@ -434,10 +468,10 @@ SELECT TOP (2000) d.OtherDocumentMasterID, d.VesselID, d.RelatedVesselID,
         await _db.InTransactionAsync(async () =>
         {
             await _db.ExecuteAsync(@"
-INSERT dbo.OtherDocumentMaster (OtherDocumentMasterID, Origin, VesselID, RelatedVesselID, OtherDocument_TypeID, DocumentNumber, DocumentTitle,
+INSERT dbo.OtherDocumentMaster (OtherDocumentMasterID, Origin, VesselID, IsForOfficeOnly, OtherDocument_TypeID, DocumentNumber, DocumentTitle,
        Status, Reference, Comments, UploadedOn, UploadedBy, IsDeleted, CreatedBy, CreatedDate, FLD_FolderID)
-VALUES (@id, 'HQ', -2, @rv, @t, @n, @title, @s, @r, @c, GETUTCDATE(), @me, 0, @me, GETUTCDATE(), @f)",
-                ("@id", id), ("@rv", relatedVessel), ("@t", request.TypeId), ("@n", number), ("@title", title),
+VALUES (@id, 'HQ', @v, 1, @t, @n, @title, @s, @r, @c, GETUTCDATE(), @me, 0, @me, GETUTCDATE(), @f)",
+                ("@id", id), ("@v", vesselId), ("@t", request.TypeId), ("@n", number), ("@title", title),
                 ("@s", Cut(request.Status, 50) ?? "Active"), ("@r", Cut(request.Reference, 150)), ("@c", Cut(request.Comments, 500)),
                 ("@me", user.UserId), ("@f", folderId));
             foreach (var f in files)
@@ -445,10 +479,10 @@ VALUES (@id, 'HQ', -2, @rv, @t, @n, @title, @s, @r, @c, GETUTCDATE(), @me, 0, @m
                 var name = Path.GetFileName(f.FileName);
                 var ext = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
                 await _db.ExecuteAsync(@"
-INSERT dbo.OtherDocument_Blob (OtherDocument_BlobID, OtherDocumentMasterID, Origin, VesselID, Description, FileName, FileType, OriginalFileType,
+INSERT dbo.OtherDocument_Blob (OtherDocument_BlobID, OtherDocumentMasterID, Origin, VesselID, IsForOfficeOnly, Description, FileName, FileType, OriginalFileType,
        BlobSize, BlobContents, AddedOn, HQ_Storage_Option, HQ_Local_Folder, HQ_DatabaseName)
-VALUES (@id, @doc, 'HQ', -2, @d, @n, @t, @t, @size, @bytes, GETUTCDATE(), 'Database', '', '')",
-                    ("@id", blobId++), ("@doc", id), ("@d", Cut(name, 150)), ("@n", Cut(name, 150)), ("@t", Cut(ext, 50)),
+VALUES (@id, @doc, 'HQ', @v, 1, @d, @n, @t, @t, @size, @bytes, GETUTCDATE(), 'Database', '', '')",
+                    ("@id", blobId++), ("@doc", id), ("@v", vesselId), ("@d", Cut(name, 150)), ("@n", Cut(name, 150)), ("@t", Cut(ext, 50)),
                     ("@size", f.Bytes.Length), ("@bytes", f.Bytes));
             }
         });
@@ -458,8 +492,8 @@ VALUES (@id, @doc, 'HQ', -2, @d, @n, @t, @t, @size, @bytes, GETUTCDATE(), 'Datab
     /// <summary>Files a document in a folder (null = take it out of its folder).</summary>
     public async Task<string?> MoveDocumentAsync(long documentId, long? folderId, OfficeUser user)
     {
-        var doc = (await _db.QueryAsync<FolderDocument>(DocumentSelect + " WHERE d.OtherDocumentMasterID = @id AND ISNULL(d.IsDeleted, 0) <> 1",
-            ("@id", documentId))).FirstOrDefault();
+        var doc = (await ProjectDocumentsAsync(await _dbContext.OtherDocumentMaster.AsNoTracking()
+            .Where(d => d.OtherDocumentMasterID == documentId && (d.IsDeleted == null || d.IsDeleted != 1)).ToListAsync(), null, false)).FirstOrDefault();
         if (doc == null) return "Document not found.";
         if (doc.FLD_FolderID != null && await FolderAsync(doc.FLD_FolderID.Value, user) is { CanEdit: false })
             return "You cannot move documents out of its folder.";
@@ -468,11 +502,10 @@ VALUES (@id, @doc, 'HQ', -2, @d, @n, @t, @t, @size, @bytes, GETUTCDATE(), 'Datab
             var target = await FolderAsync(folderId.Value, user);
             if (target == null) return "Folder not found.";
             if (!target.CanEdit) return "You cannot add documents to that folder.";
-            var docVessel = doc.VesselID == SqlDb.OfficeOnly ? doc.RelatedVesselID : doc.VesselID;
-            if (target.VesselID > 0 && docVessel is > 0 && docVessel != target.VesselID)
+            if (target.VesselID > 0 && doc.VesselID > 0 && doc.VesselID != target.VesselID)
                 return "That folder belongs to another vessel.";
             // A vessel's document in an office-only folder would vanish from the vessel's folders.
-            if (doc.VesselID != SqlDb.OfficeOnly && target.VesselID == SqlDb.OfficeOnly)
+            if (!doc.IsForOfficeOnly && target.VesselID == SqlDb.OfficeOnly)
                 return "A vessel's document cannot go into an office-only folder.";
         }
         await _db.ExecuteAsync("UPDATE dbo.OtherDocumentMaster SET FLD_FolderID = @f, ModifiedBy = @me, ModifiedDate = GETUTCDATE() WHERE OtherDocumentMasterID = @id",
@@ -483,15 +516,36 @@ VALUES (@id, @doc, 'HQ', -2, @d, @n, @t, @t, @size, @bytes, GETUTCDATE(), 'Datab
     /// <summary>Deletes a document added at the office (office only). Documents from or for a vessel are not deleted here.</summary>
     public async Task<string?> DeleteDocumentAsync(long documentId, OfficeUser user)
     {
-        var doc = (await _db.QueryAsync<FolderDocument>(DocumentSelect + " WHERE d.OtherDocumentMasterID = @id AND ISNULL(d.IsDeleted, 0) <> 1",
-            ("@id", documentId))).FirstOrDefault();
+        var doc = (await ProjectDocumentsAsync(await _dbContext.OtherDocumentMaster.AsNoTracking()
+            .Where(d => d.OtherDocumentMasterID == documentId && (d.IsDeleted == null || d.IsDeleted != 1)).ToListAsync(), null, false)).FirstOrDefault();
         if (doc == null) return "Document not found.";
-        if (doc.VesselID != SqlDb.OfficeOnly) return "Only documents added at the office can be deleted here.";
+        if (!doc.IsForOfficeOnly) return "Only documents added at the office can be deleted here.";
         if (doc.FLD_FolderID != null && await FolderAsync(doc.FLD_FolderID.Value, user) is { CanEdit: false })
             return "You cannot delete documents in this folder.";
         await _db.ExecuteAsync("UPDATE dbo.OtherDocumentMaster SET IsDeleted = 1, ModifiedBy = @me, ModifiedDate = GETUTCDATE() WHERE OtherDocumentMasterID = @id",
             ("@me", user.UserId), ("@id", documentId));
         return null;
+    }
+
+    private sealed class DocumentBlobRow
+    {
+        public string? FileName { get; set; }
+        public string? FileType { get; set; }
+        public byte[]? BlobContents { get; set; }
+    }
+
+    public async Task<FileContent?> GetDocumentFileAsync(long blobId)
+    {
+        var row = await _db.FirstAsync<DocumentBlobRow>(@"
+SELECT b.FileName, b.FileType, b.BlobContents
+  FROM dbo.OtherDocument_Blob b
+  JOIN dbo.OtherDocumentMaster d ON d.OtherDocumentMasterID = b.OtherDocumentMasterID
+ WHERE b.OtherDocument_BlobID = @id AND ISNULL(d.IsDeleted, 0) <> 1", ("@id", blobId));
+        if (row?.BlobContents == null) return null;
+        var fileName = string.IsNullOrWhiteSpace(row.FileName) ? $"file-{blobId}" : row.FileName;
+        // FileType holds a MIME type or an extension; the file name decides when it is not a MIME type.
+        var contentType = row.FileType != null && row.FileType.Contains('/') ? row.FileType : DMS.Infrastructure.Services.ContentTypes.For(fileName);
+        return new FileContent(row.BlobContents, contentType, fileName);
     }
 
     public Task<List<FileItem>> GetDocumentFilesAsync(long documentId)
