@@ -47,6 +47,12 @@ public interface ICIRService
     public Task<string?> AddManualLinkAsync(long circularId, AddManualLink request, OfficeUser user);
     public Task RemoveManualLinkAsync(long linkId);
     public Task<string?> CancelCircularAsync(long circularId, CancelCircular request, OfficeUser user);
+
+    /// <summary>Draft -> Active: sends the circular to the vessels. Returns why it could not be released, or null.</summary>
+    public Task<string?> ReleaseCircularAsync(long circularId, OfficeUser user);
+
+    /// <summary>Saves a draft (like EditCircular), then releases it. Returns why it could not, or null.</summary>
+    public Task<string?> SaveAndReleaseCircularAsync(EditCircularDto editDto, OfficeUser user);
     public Task<List<CircularManualLink>> GetForManualAsync(long manualId);
     public Task<int> CloseLinksForManualAsync(long manualId);
     public Task<List<CircularCategorySetting>> GetCategoriesAsync();

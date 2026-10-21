@@ -115,6 +115,32 @@ SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Tit
     {
         var cirList = await _queries.GetCIRListAsync(userID, categoryId, circularType);
 
+        // GetCIRMasterList does not return a reliable AttachmentCount, so compute it from CIR_Blob.
+        // A blob row counts only when it still holds a file (removing an attachment on edit keeps the
+        // row but clears FileName/BlobContents). BlobContents is only tested for NULL, never loaded.
+        var masterIds = cirList
+            .Where(c => c.IsCategory == 0 && c.CIR_MasterID > 0)
+            .Select(c => c.CIR_MasterID)
+            .Distinct()
+            .ToList();
+
+        if (masterIds.Count > 0)
+        {
+            var counts = await _dbContext.CIR_Blob
+                .AsNoTracking()
+                .Where(b => b.CIR_MasterID != null
+                            && masterIds.Contains(b.CIR_MasterID.Value)
+                            && (b.BlobContents != null || (b.FileName != null && b.FileName != "")))
+                .GroupBy(b => b.CIR_MasterID!.Value)
+                .Select(g => new { MasterId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.MasterId, x => x.Count);
+
+            foreach (var item in cirList)
+            {
+                item.AttachmentCount = counts.TryGetValue(item.CIR_MasterID, out var count) ? count : 0;
+            }
+        }
+
         return cirList;
     }
 
@@ -529,7 +555,6 @@ SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Tit
         var current = await GetCircularesExtraInfoAsync(circularId);
         if (current == null) return "Circular not found.";
         if (request.AckDueDays is < 0 or > 3650) return "Acknowledge-by days must be between 0 and 3650.";
-        if (current.RequiresValidUntil && request.ValidUntil == null) return "This category needs a \"valid until\" date.";
         await _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_Master SET AckDueDays = {request.AckDueDays}, ValidUntil = {request.ValidUntil?.Date} WHERE CIR_MasterID = {circularId}");
         return null;
     }
@@ -589,7 +614,8 @@ VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
         if (current == null) return "Circular not found.";
         var status = current.Status;
         if (status == "Cancelled") return "This circular is already cancelled.";
-        if (status is "Temp" or "Draft") return "A draft cannot be cancelled; delete it instead.";
+        if (status == "Temp") return "Save the circular before cancelling it.";
+        // A draft can be cancelled too: it was never sent, so the vessels are not told (TR_CIR_Master_Inbox, 018).
         if (request.SupersededById == circularId) return "A circular cannot supersede itself.";
         if (request.SupersededById != null && !await _dbContext.CIR_Master.AnyAsync(m => m.CIR_MasterID == request.SupersededById && (m.IsDeleted ?? 0) != 1))
             return "The superseding circular was not found.";
@@ -609,10 +635,62 @@ VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
         return null;
     }
 
+    /// <summary>
+    /// Releases a draft: Status Draft -> Active and ReleasedDate = now. From then on the circular is sent to the
+    /// vessels with the sync, appears in their inbox (TR_CIR_Master_Inbox, 012) and in pending acknowledgements,
+    /// and its manual links count as open amendments. A released circular can only be cancelled or superseded.
+    /// </summary>
+    public async Task<string?> ReleaseCircularAsync(long circularId, OfficeUser user)
+    {
+        var current = await _dbContext.CIR_Master.FirstOrDefaultAsync(m => m.CIR_MasterID == circularId);
+        if (current == null || (current.IsDeleted ?? 0) == 1) return "Circular not found.";
+        if (current.Status == "Temp") return "Save the circular before releasing it.";
+        if (current.Status != "Draft") return $"Only a draft can be released; this one is {current.Status ?? "already released"}.";
+        if (string.IsNullOrWhiteSpace(current.Title)) return "Give the circular a title before releasing it.";
+        if (current.CIR_CategoryID == null) return "Choose a category before releasing the circular.";
+
+        current.Status = "Active";
+        current.ReleasedDate = DateTime.Now;
+        current.ModifiedBy = user.UserId;
+        current.ModifiedDate = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        var type = string.IsNullOrWhiteSpace(current.CircularType) ? "Circular" : current.CircularType;
+        await _queries.AddToLog(circularId, $"{type} Released", $"{type}: {current.CIR_Number} released by {user.UserName}");
+        return null;
+    }
+
+    /// <summary>
+    /// "Save and release" from the Edit Circular form: the same save as EditCircular, then Draft -> Active.
+    /// Everything that would stop the release is checked first, so a refused release leaves the circular unchanged.
+    /// </summary>
+    public async Task<string?> SaveAndReleaseCircularAsync(EditCircularDto editDto, OfficeUser user)
+    {
+        if (editDto is null) return "Circular payload is required.";
+
+        var current = await _dbContext.CIR_Master.AsNoTracking()
+            .Where(m => m.CIR_MasterID == editDto.CIR_MasterID)
+            .Select(m => new { m.Status, m.IsDeleted })
+            .FirstOrDefaultAsync();
+        if (current == null || (current.IsDeleted ?? 0) == 1) return "Circular not found.";
+        if (current.Status != "Draft")
+            return $"Only a draft can be released; this one is {current.Status ?? "already released"}. Use Save instead.";
+        if (string.IsNullOrWhiteSpace(editDto.Title)) return "Give the circular a title before releasing it.";
+        if (editDto.CIR_CategoryID <= 0) return "Choose a category before releasing the circular.";
+
+        // Saved as a draft first (the form's other changes), then released.
+        editDto.Status = "Draft";
+        editDto.ReleasedDate = null;
+        await UpdateCircularAsync(editDto);
+        return await ReleaseCircularAsync(editDto.CIR_MasterID, user);
+    }
+
     public async Task<List<CircularManualLink>> GetForManualAsync(long manualId)
     {
         var result = new List<CircularManualLink>();
-        var sql = LinkSelect + @" WHERE l.DM_ManualID = @id AND ISNULL(c.IsDeleted, 0) <> 1 AND ISNULL(c.Status, '') NOT IN ('Temp', 'Draft')
+        // Draft circulars are listed too (the page marks them "Draft"), so a link made while the circular is
+        // still being written shows on the manual at once. Temp rows (unsaved) are left out.
+        var sql = LinkSelect + @" WHERE l.DM_ManualID = @id AND ISNULL(c.IsDeleted, 0) <> 1 AND ISNULL(c.Status, '') <> 'Temp'
  ORDER BY l.IsActive DESC, COALESCE(c.ReleasedDate, c.DateIssued) DESC";
         var connection = _dbContext.Database.GetDbConnection();
         var openedHere = connection.State != System.Data.ConnectionState.Open;
@@ -654,7 +732,12 @@ VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
     }
 
     public Task<int> CloseLinksForManualAsync(long manualId)
-        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_ManualLink SET IsActive = 0, ClosedOn = GETUTCDATE()\n                              WHERE DM_ManualID = {manualId} AND IsActive = 1 AND LinkType IN ('Amends', 'Supersedes')");
+        // Only links of circulars that were actually released: a draft's amendment cannot have been taken in yet.
+        => _dbContext.Database.ExecuteSqlInterpolatedAsync($@"UPDATE l SET l.IsActive = 0, l.ClosedOn = GETUTCDATE()
+  FROM dbo.CIR_ManualLink l
+  JOIN dbo.CIR_Master c ON c.CIR_MasterID = l.CIR_MasterID
+ WHERE l.DM_ManualID = {manualId} AND l.IsActive = 1 AND l.LinkType IN ('Amends', 'Supersedes')
+   AND ISNULL(c.Status, '') NOT IN ('Temp', 'Draft')");
 
     public async Task<List<CircularCategorySetting>> GetCategoriesAsync()
     {

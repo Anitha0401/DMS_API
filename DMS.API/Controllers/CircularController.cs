@@ -157,6 +157,24 @@ public class CircularController : DmsControllerBase
         return Created(string.Empty, created);
     }
 
+    /// <summary>
+    /// Save and release: the same body as EditCircular. Saves the draft's changes, then releases it to the vessels
+    /// (Status Draft -> Active, ReleasedDate = now). 400 with the reason when it cannot be released (nothing is saved then).
+    /// </summary>
+    [HttpPut("ReleaseCircular")]
+    [RequestSizeLimit(MaxCircularRequestBytes)]
+    public async Task<ActionResult<long>> ReleaseCircular([FromBody] EditCircularDto editDto)
+    {
+        if (editDto is null)
+            return BadRequest("Circular payload is required.");
+
+        _logger.LogInformation("Save and release Circular (CIR_MasterID={CIR_MasterID})", editDto.CIR_MasterID);
+
+        editDto.CreatedBy = CurrentUserId; // recorded as ModifiedBy
+        var error = await _service.SaveAndReleaseCircularAsync(editDto, Me);
+        return error == null ? Ok(editDto.CIR_MasterID) : BadRequest(error);
+    }
+
     [HttpPut("EditCircular")]
     [RequestSizeLimit(MaxCircularRequestBytes)]
     public async Task<ActionResult<long>> EditCircular([FromBody] EditCircularDto editDto)
@@ -165,6 +183,12 @@ public class CircularController : DmsControllerBase
             return BadRequest("Circular payload is required.");
 
         _logger.LogInformation("Edit Circular (CIR_MasterID={CIR_MasterID})", editDto.CIR_MasterID);
+
+        // Only a draft can be edited; a released or cancelled circular is fixed (cancel / supersede it instead).
+        var current = await _service.GetCircularesExtraInfoAsync(editDto.CIR_MasterID);
+        if (current == null) return NotFound("Circular not found.");
+        if (current.Status is not ("Draft" or "Temp"))
+            return BadRequest($"This circular is {current.Status} and can no longer be edited.");
 
         // Recorded as ModifiedBy: the logged-in user, not a name sent in the request.
         editDto.CreatedBy = CurrentUserId;
@@ -202,15 +226,16 @@ public class CircularController : DmsControllerBase
     [HttpPut("{id:long}/Extras")]
     public async Task<IActionResult> SaveExtras(long id, [FromBody] SaveCircularExtras request)
     {
-        var result = await _service.SaveCircularesExtraInfoAsync(id, request);
-        return Ok(result);
+        // The service returns why it was refused (or null): a refusal is a 400 so the page shows it.
+        var error = await _service.SaveCircularesExtraInfoAsync(id, request);
+        return error == null ? Ok() : BadRequest(error);
     }
 
     [HttpPost("{id:long}/Links")]
     public async Task<IActionResult> AddLink(long id, [FromBody] AddManualLink request)
     {
-        var result = await _service.AddManualLinkAsync(id, request, Me);
-        return Ok(result);
+        var error = await _service.AddManualLinkAsync(id, request, Me);
+        return error == null ? Ok() : BadRequest(error);
     }
 
     [HttpDelete("Links/{linkId:long}")]
@@ -223,8 +248,16 @@ public class CircularController : DmsControllerBase
     [HttpPost("{id:long}/Cancel")]
     public async Task<IActionResult> Cancel(long id, [FromBody] CancelCircular request)
     {
-        var result = await _service.CancelCircularAsync(id, request, Me);
-        return Ok(result);
+        var error = await _service.CancelCircularAsync(id, request, Me);
+        return error == null ? Ok() : BadRequest(error);
+    }
+
+    /// <summary>Releases a draft circular / alert to the vessels (Draft -> Active).</summary>
+    [HttpPost("{id:long}/Release")]
+    public async Task<IActionResult> Release(long id)
+    {
+        var error = await _service.ReleaseCircularAsync(id, Me);
+        return error == null ? Ok() : BadRequest(error);
     }
 
     [HttpGet("Manual/{manualId:long}/Circulars")]
