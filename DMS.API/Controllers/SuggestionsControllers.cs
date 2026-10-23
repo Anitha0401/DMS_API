@@ -1,5 +1,6 @@
 using DMS.Application.DTO.Features;
 using DMS.Application.Interface;
+using DMS.API.Models.Suggestions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DMS.API.Controllers;
@@ -16,7 +17,9 @@ public class SuggestionsController : DmsControllerBase
 
     [HttpGet]
     public async Task<IActionResult> List(string? status, int? vesselId, bool mine = false)
-        => Ok(await _service.GetListAsync(status, vesselId, mine ? CurrentUserId : null));
+    {
+        return Ok(await _service.GetListAsync(status, vesselId, mine ? CurrentUserId : null));
+    }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> Get(long id)
@@ -28,13 +31,13 @@ public class SuggestionsController : DmsControllerBase
     [HttpPost]
     [RequestSizeLimit(200_000_000)]
     [RequestFormLimits(MultipartBodyLengthLimit = 200_000_000)]
-    public async Task<IActionResult> Create([FromForm] string title, [FromForm] string? description, [FromForm] string? itemType,
-        [FromForm] long? itemId, [FromForm] string? quotedText, [FromForm] string? priority, [FromForm] List<IFormFile>? files)
+    public async Task<IActionResult> Create([FromForm] CreateSuggestionRequest request)
     {
         try
         {
-            var request = new NewSuggestion(title, description, itemType, itemId, quotedText, priority, await ReadFilesAsync(files));
-            return Ok(new { id = await _service.CreateAsync(request, Me) });
+            var suggestion = new NewSuggestion(request.Title, request.Description, request.ItemType, request.ItemId,
+                request.QuotedText, request.Priority, await ReadFilesAsync(request.Files));
+            return Ok(new { id = await _service.CreateAsync(suggestion, Me) });
         }
         catch (ArgumentException ex)
         {
@@ -44,7 +47,9 @@ public class SuggestionsController : DmsControllerBase
 
     [HttpPut("{id:long}/Status")]
     public async Task<IActionResult> Status(long id, [FromBody] SuggestionStatusChange request)
-        => Done(await _service.ChangeStatusAsync(id, request, Me));
+    {
+        return Done(await _service.ChangeStatusAsync(id, request, Me));
+    }
 
     public sealed record CommentRequest(string Comment);
 
@@ -63,5 +68,8 @@ public class SuggestionsController : DmsControllerBase
     }
 
     [HttpGet("File/{blobId:long}")]
-    public async Task<IActionResult> GetFile(long blobId) => FileOrNotFound(await _service.GetFileAsync(blobId));
+    public async Task<IActionResult> GetFile(long blobId)
+    {
+        return FileOrNotFound(await _service.GetFileAsync(blobId));
+    }
 }

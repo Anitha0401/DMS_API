@@ -25,4 +25,18 @@ namespace DMS.Application.Interface
     {
         Task<List<SearchHit>> SearchAsync(string query, string? types, OfficeUser user);
     }
+
+    public interface IInboxService
+    {
+        Task<List<InboxItem>> GetListAsync(OfficeUser user, bool unreadOnly, string? itemType, string? search, int take);
+        Task<int> GetUnreadCountAsync(OfficeUser user);
+        Task<bool> MarkReadAsync(long inboxId, bool read, OfficeUser user);
+        Task<int> MarkAllReadAsync(OfficeUser user);
+    }
+
+    public interface IReportService
+    {
+        /// <summary>The rows of one report (see ReportService for the keys).</summary>
+        Task<List<Dictionary<string, object?>>> RunAsync(string key, ReportFilter filter);
+    }
 }

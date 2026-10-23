@@ -261,7 +261,10 @@ public class CircularController : DmsControllerBase
     }
 
     [HttpGet("Manual/{manualId:long}/Circulars")]
-    public async Task<IActionResult> ForManual(long manualId) => Ok(await _service.GetForManualAsync(manualId));
+    public async Task<IActionResult> ForManual(long manualId)
+    {
+        return Ok(await _service.GetForManualAsync(manualId));
+    }
 
     /// <summary>After a manual revision takes in the amendments: close its Amends / Supersedes links.</summary>
     [HttpPost("Manual/{manualId:long}/CloseLinks")]

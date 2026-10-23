@@ -14,5 +14,8 @@ public class SearchController : DmsControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Search(string q, string? types) => Ok(await _service.SearchAsync(q ?? "", types, Me));
+    public async Task<IActionResult> Search(string q, string? types)
+    {
+        return Ok(await _service.SearchAsync(q ?? "", types, Me));
+    }
 }

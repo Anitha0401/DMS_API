@@ -16,19 +16,29 @@ public class PendingAckController : DmsControllerBase
     }
 
     [HttpGet("Vessels")]
-    public async Task<IActionResult> Vessels() => Ok(await _service.GetVesselSummaryAsync());
+    public async Task<IActionResult> Vessels()
+    {
+        return Ok(await _service.GetVesselSummaryAsync());
+    }
 
     [HttpGet("Vessel")]
     public async Task<IActionResult> Vessel(int? vesselId, string? itemType, string? rank)
-        => Ok(await _service.GetVesselPendingAsync(vesselId, itemType, rank));
+    {
+        return Ok(await _service.GetVesselPendingAsync(vesselId, itemType, rank));
+    }
 
     /// <summary>Office users' pending items; anyone but an administrator sees only their own.</summary>
     [HttpGet("Office")]
     public async Task<IActionResult> Office(string? userId)
-        => Ok(await _service.GetOfficePendingAsync(IsAdmin ? userId : CurrentUserId));
+    {
+        return Ok(await _service.GetOfficePendingAsync(IsAdmin ? userId : CurrentUserId));
+    }
 
     [HttpGet("Mine")]
-    public async Task<IActionResult> Mine() => Ok(await _service.GetOfficePendingAsync(CurrentUserId));
+    public async Task<IActionResult> Mine()
+    {
+        return Ok(await _service.GetOfficePendingAsync(CurrentUserId));
+    }
 
     [HttpGet("Settings")]
     public async Task<IActionResult> GetSettings() => Ok(await _service.GetSettingsAsync());

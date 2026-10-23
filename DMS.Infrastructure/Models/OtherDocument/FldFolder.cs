@@ -3,12 +3,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DMS.Data.EF.Models.OtherDocument;
 
-[Table("FLD_Folder")]
+[Table("OtherDocument_Folder")]
 public sealed class FldFolder
 {
     [Key]
-    [Column("FLD_FolderID")]
-    public long FLD_FolderID { get; set; }
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    [Column("OtherDocument_FolderID")]
+    public long OtherDocument_FolderID { get; set; }
     public string Origin { get; set; } = null!;
     public int VesselID { get; set; }
     public long? ParentID { get; set; }

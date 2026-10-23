@@ -123,14 +123,14 @@ BEGIN
         DELETE FROM dbo.TableID_Setup WHERE TableName = @TableName AND VesselID = @SetupVesselID;
         IF COL_LENGTH('dbo.TableID_Setup', 'IsForVsl') IS NOT NULL
             -- Same IsForVsl as the table's other rows (0 when it has none).
-            EXEC sp_executesql N'INSERT INTO dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber, ToTrf, IsForVsl)
-                SELECT @Id, @Table, @Vessel, @Last, 1,
+            EXEC sp_executesql N'INSERT INTO dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber, IsForVsl)
+                SELECT @Id, @Table, @Vessel, @Last,
                        ISNULL((SELECT TOP (1) IsForVsl FROM dbo.TableID_Setup WHERE TableName = @Table AND IsForVsl IS NOT NULL), 0);',
                  N'@Id bigint, @Table varchar(50), @Vessel int, @Last bigint',
                  @Id = @TableID_SetupID, @Table = @TableName, @Vessel = @SetupVesselID, @Last = @LastNumFromTableID;
         ELSE
-            INSERT INTO dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber, ToTrf)
-            VALUES (@TableID_SetupID, @TableName, @SetupVesselID, @LastNumFromTableID, 1);
+            INSERT INTO dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber)
+            VALUES (@TableID_SetupID, @TableName, @SetupVesselID, @LastNumFromTableID);
     END;
     -------------------------------------------------------------------------------------------------------
 
@@ -151,7 +151,7 @@ BEGIN
 
     ---- Remember it in TableID_Setup (the whole block when @Incrementor > 1)
     UPDATE dbo.TableID_Setup
-       SET LastNumber = @NewTableID + @Incrementor - 1, ToTrf = 1
+       SET LastNumber = @NewTableID + @Incrementor - 1
      WHERE TableName = @TableName AND VesselID = @SetupVesselID;
 
     COMMIT TRANSACTION;

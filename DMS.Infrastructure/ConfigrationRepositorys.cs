@@ -47,9 +47,13 @@ public static class ConfigrationRepositorys
 
         // New features (Database/012_NewFeatures.sql)
         service.AddScoped<SqlDb>();
+        // Attachment files kept in the database, a local folder or the cloud (dbo.BlobTableSettings).
+        service.AddScoped<AttachmentStorage>();
         service.AddScoped<IAckDashboardService, AckDashboardService>();
         service.AddScoped<ISuggestionService, SuggestionService>();
         service.AddScoped<ISearchService, SearchService>();
+        service.AddScoped<IInboxService, InboxService>();
+        service.AddScoped<IReportService, ReportService>();
         return service;
     }
 }

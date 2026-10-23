@@ -490,8 +490,8 @@ BEGIN
         ELSE
         BEGIN
             SELECT @id = ISNULL(MAX(TableID_SetupID), 0) + 1 FROM dbo.TableID_Setup;
-            EXEC sp_executesql N'INSERT dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber, ToTrf, IsForVsl)
-                                 VALUES (@id, @n, -1, 0, 0, 1)', N'@id bigint, @n varchar(50)', @id = @id, @n = @name;
+            EXEC sp_executesql N'INSERT dbo.TableID_Setup (TableID_SetupID, TableName, VesselID, LastNumber, IsForVsl)
+                                 VALUES (@id, @n, -1, 0, 1)', N'@id bigint, @n varchar(50)', @id = @id, @n = @name;
         END
         FETCH NEXT FROM c INTO @name;
     END

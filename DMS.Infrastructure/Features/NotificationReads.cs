@@ -1,3 +1,4 @@
+using DMS.Data.EF.Models.Features;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,34 +24,49 @@ public static class NotificationReads
     public static async Task<bool> IsInstalledAsync(DbContext db)
     {
         if (_installed) return true;
-        var found = await db.Database
-            .SqlQueryRaw<int>("SELECT CASE WHEN OBJECT_ID(N'dbo.Notification_Read', N'U') IS NULL THEN 0 ELSE 1 END AS [Value]")
-            .SingleAsync();
-        return _installed = found == 1;
+        return _installed = await db.TableExistsAsync("Notification_Read");
     }
 
     /// <summary>The notification IDs of one module this user has read (notifications are listed for 30 days).</summary>
     public static async Task<HashSet<long>> ReadIdsAsync(DbContext db, string module, string userId)
     {
-        var ids = await db.Database
-            .SqlQuery<long>($@"SELECT NotificationID AS [Value] FROM dbo.Notification_Read
-                               WHERE Module = {module} AND UserID = {userId} AND ReadOn >= DATEADD(DAY, -35, SYSUTCDATETIME())")
+        var since = DateTime.UtcNow.AddDays(-35);
+        var ids = await db.Set<NotificationRead>().AsNoTracking()
+            .Where(r => r.Module == module && r.UserID == userId && r.ReadOn >= since)
+            .Select(r => r.NotificationID)
             .ToListAsync();
         return ids.ToHashSet();
     }
 
     public static async Task MarkReadAsync(DbContext db, string module, long notificationId, string userId)
     {
+        var reads = db.Set<NotificationRead>();
+        if (await reads.AnyAsync(r => r.Module == module && r.NotificationID == notificationId && r.UserID == userId))
+            return;
+        var row = reads.Add(new NotificationRead { Module = module, NotificationID = notificationId, UserID = userId, ReadOn = DateTime.UtcNow });
         try
         {
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-INSERT dbo.Notification_Read (Module, NotificationID, UserID, ReadOn)
-SELECT {module}, {notificationId}, {userId}, SYSUTCDATETIME()
- WHERE NOT EXISTS (SELECT 1 FROM dbo.Notification_Read WHERE Module = {module} AND NotificationID = {notificationId} AND UserID = {userId})");
+            await db.SaveChangesAsync();
         }
-        catch (SqlException ex) when (ex.Number is 2627 or 2601)
+        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2627 or 2601 })
         {
             // Marked read by a second click at the same moment: already done.
         }
+        finally
+        {
+            row.State = EntityState.Detached;
+        }
+    }
+}
+
+public static class DatabaseObjects
+{
+    /// <summary>True when dbo.{table} exists (stored procedure dbo.Api_TableExists).</summary>
+    public static async Task<bool> TableExistsAsync(this DbContext db, string table)
+    {
+        var found = await db.Database
+            .SqlQuery<int>($"EXEC dbo.Api_TableExists @TableName = {table}")
+            .ToListAsync();
+        return found.FirstOrDefault() == 1;
     }
 }

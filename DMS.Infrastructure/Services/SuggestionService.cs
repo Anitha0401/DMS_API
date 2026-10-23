@@ -1,6 +1,9 @@
 using DMS.Application.DTO.Features;
 using DMS.Application.Interface;
+using DMS.Data.EF.Context;
 using DMS.Data.EF.Features;
+using DMS.Data.EF.Models.Features;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Infrastructure.Services;
 
@@ -28,49 +31,134 @@ public sealed class SuggestionService : ISuggestionService
         ["Closed"] = new[] { "UnderReview" },
     };
 
+    private readonly GeneralContext _ctx;
+    private readonly DmsContext _dms;
+    private readonly CircularsContext _cir;
+    private readonly OtherDocumentsContext _docs;
     private readonly SqlDb _db;
 
-    public SuggestionService(SqlDb db) => _db = db;
+    public SuggestionService(GeneralContext ctx, DmsContext dms, CircularsContext cir, OtherDocumentsContext docs, SqlDb db)
+    {
+        _ctx = ctx;
+        _dms = dms;
+        _cir = cir;
+        _docs = docs;
+        _db = db;
+    }
 
-    private const string ListSelect = @"
-SELECT s.SUG_MasterID, s.VesselID,
-       CASE WHEN s.VesselID > 0 THEN v.VslName ELSE 'Office' END AS VesselName,
-       s.SuggestionNo, s.Title, s.ItemType, s.ItemID,
-       CASE s.ItemType
-            WHEN 'Manual' THEN (SELECT TOP (1) m.ManualNo + ' ' + ISNULL(m.ManualName, '') FROM dbo.DM_Manual m WHERE m.DM_ManualID = s.ItemID)
-            WHEN 'Document' THEN (SELECT TOP (1) d.DocumentNumber + ' ' + d.DocumentTitle FROM dbo.OtherDocumentMaster d WHERE d.OtherDocumentMasterID = s.ItemID)
-            WHEN 'Circular' THEN (SELECT TOP (1) ISNULL(c.CIR_Number, '') + ' ' + ISNULL(c.Title, '') FROM dbo.CIR_Master c WHERE c.CIR_MasterID = s.ItemID)
-            WHEN 'Alert' THEN (SELECT TOP (1) ISNULL(c.CIR_Number, '') + ' ' + ISNULL(c.Title, '') FROM dbo.CIR_Master c WHERE c.CIR_MasterID = s.ItemID)
-       END AS ItemTitle,
-       s.Priority, s.Status, s.SubmittedBy, s.SubmittedByName, s.SubmittedRank, s.SubmittedOn, s.AssignedTo, s.ModifiedOn";
+    private static readonly string[] ClosedStatuses = { "Rejected", "Implemented", "Closed" };
 
-    public Task<List<SuggestionListItem>> GetListAsync(string? status, int? vesselId, string? submittedBy)
-        => _db.QueryAsync<SuggestionListItem>(ListSelect + @"
-  FROM dbo.SUG_Master s
-  LEFT JOIN dbo.V_Vessel v ON v.VesselID = s.VesselID
- WHERE s.IsDeleted = 0
-   AND (@status IS NULL OR s.Status = @status OR (@status = 'Open' AND s.Status NOT IN ('Rejected', 'Implemented', 'Closed')))
-   AND (@vessel IS NULL OR s.VesselID = @vessel)
-   AND (@by IS NULL OR s.SubmittedBy = @by)
- ORDER BY s.SubmittedOn DESC, s.SUG_MasterID DESC",
-            ("@status", string.IsNullOrWhiteSpace(status) ? null : status), ("@vessel", vesselId),
-            ("@by", string.IsNullOrWhiteSpace(submittedBy) ? null : submittedBy));
+    /// <summary>Suggestions with the vessel name; ItemTitle is filled afterwards by <see cref="FillItemTitlesAsync"/>.</summary>
+    private IQueryable<SuggestionDetail> Details(IQueryable<SugMaster> source)
+        => from s in source
+           join v in _ctx.VVessels on s.VesselID equals v.VesselID into vs
+           from v in vs.DefaultIfEmpty()
+           select new SuggestionDetail
+           {
+               SUG_MasterID = s.SUG_MasterID,
+               VesselID = s.VesselID,
+               VesselName = s.VesselID > 0 ? v.VslName : "Office",
+               SuggestionNo = s.SuggestionNo,
+               Title = s.Title,
+               ItemType = s.ItemType,
+               ItemID = s.ItemID,
+               Priority = s.Priority,
+               Status = s.Status,
+               SubmittedBy = s.SubmittedBy,
+               SubmittedByName = s.SubmittedByName,
+               SubmittedRank = s.SubmittedRank,
+               SubmittedOn = s.SubmittedOn,
+               AssignedTo = s.AssignedTo,
+               ModifiedOn = s.ModifiedOn,
+               Description = s.Description,
+               QuotedText = s.QuotedText,
+               ImplementedItemType = s.ImplementedItemType,
+               ImplementedItemID = s.ImplementedItemID,
+           };
+
+    public async Task<List<SuggestionListItem>> GetListAsync(string? status, int? vesselId, string? submittedBy)
+    {
+        var query = _ctx.SugMasters.AsNoTracking().Where(s => s.IsDeleted == 0);
+        if (!string.IsNullOrWhiteSpace(status))
+            query = status == "Open"
+                ? query.Where(s => !ClosedStatuses.Contains(s.Status))
+                : query.Where(s => s.Status == status);
+        if (vesselId != null) query = query.Where(s => s.VesselID == vesselId);
+        if (!string.IsNullOrWhiteSpace(submittedBy)) query = query.Where(s => s.SubmittedBy == submittedBy);
+
+        var list = await Details(query.OrderByDescending(s => s.SubmittedOn).ThenByDescending(s => s.SUG_MasterID)).ToListAsync();
+        await FillItemTitlesAsync(list);
+        return list.Select(d => new SuggestionListItem
+        {
+            SUG_MasterID = d.SUG_MasterID, VesselID = d.VesselID, VesselName = d.VesselName, SuggestionNo = d.SuggestionNo,
+            Title = d.Title, ItemType = d.ItemType, ItemID = d.ItemID, ItemTitle = d.ItemTitle, Priority = d.Priority,
+            Status = d.Status, SubmittedBy = d.SubmittedBy, SubmittedByName = d.SubmittedByName, SubmittedRank = d.SubmittedRank,
+            SubmittedOn = d.SubmittedOn, AssignedTo = d.AssignedTo, ModifiedOn = d.ModifiedOn,
+        }).ToList();
+    }
 
     public async Task<SuggestionDetail?> GetAsync(long id)
     {
-        var detail = await _db.FirstAsync<SuggestionDetail>(ListSelect + @",
-       s.Description, s.QuotedText, s.ImplementedItemType, s.ImplementedItemID
-  FROM dbo.SUG_Master s
-  LEFT JOIN dbo.V_Vessel v ON v.VesselID = s.VesselID
- WHERE s.SUG_MasterID = @id AND s.IsDeleted = 0", ("@id", id));
+        var detail = await Details(_ctx.SugMasters.AsNoTracking().Where(s => s.SUG_MasterID == id && s.IsDeleted == 0)).FirstOrDefaultAsync();
         if (detail == null) return null;
-        detail.Log = await _db.QueryAsync<SuggestionLog>(
-            "SELECT SUG_LogID, Status, Comment, UserID, UserName, LogDate FROM dbo.SUG_Log WHERE SUG_MasterID = @id ORDER BY LogDate, SUG_LogID",
-            ("@id", id));
-        detail.Files = await _db.QueryAsync<FileItem>(@"
-SELECT SUG_BlobID AS Id, FileName, FileType, BlobSize, AddedOn AS UploadedOn
-  FROM dbo.SUG_Blob WHERE SUG_MasterID = @id ORDER BY SUG_BlobID", ("@id", id));
+        await FillItemTitlesAsync(new[] { detail });
+        detail.Log = await _ctx.SugLogs.AsNoTracking()
+            .Where(l => l.SUG_MasterID == id)
+            .OrderBy(l => l.LogDate).ThenBy(l => l.SUG_LogID)
+            .Select(l => new SuggestionLog
+            {
+                SUG_LogID = l.SUG_LogID, Status = l.Status, Comment = l.Comment, UserID = l.UserID, UserName = l.UserName, LogDate = l.LogDate,
+            })
+            .ToListAsync();
+        detail.Files = await _ctx.SugBlobs.AsNoTracking()
+            .Where(b => b.SUG_MasterID == id)
+            .OrderBy(b => b.SUG_BlobID)
+            .Select(b => new FileItem
+            {
+                Id = b.SUG_BlobID, FileName = b.FileName ?? "", FileType = b.FileType, BlobSize = b.BlobSize, UploadedOn = b.AddedOn,
+            })
+            .ToListAsync();
         return detail;
+    }
+
+    /// <summary>The title of the manual, circular / alert or document a suggestion is about.</summary>
+    private async Task FillItemTitlesAsync(IReadOnlyCollection<SuggestionListItem> items)
+    {
+        List<long> Ids(params string[] types) => items
+            .Where(i => i.ItemID != null && types.Contains(i.ItemType)).Select(i => i.ItemID!.Value).Distinct().ToList();
+
+        var manualIds = Ids("Manual");
+        var manuals = manualIds.Count == 0 ? new Dictionary<long, string>() : (await _dms.DmManuals.AsNoTracking()
+                .Where(m => manualIds.Contains(m.DM_ManualID))
+                .Select(m => new { m.DM_ManualID, m.ManualNo, m.ManualName })
+                .ToListAsync())
+            .GroupBy(m => m.DM_ManualID).ToDictionary(g => g.Key, g => g.First().ManualNo + " " + (g.First().ManualName ?? ""));
+
+        var circularIds = Ids("Circular", "Alert");
+        var circulars = circularIds.Count == 0 ? new Dictionary<long, string>() : (await _cir.CIR_Master.AsNoTracking()
+                .Where(c => circularIds.Contains(c.CIR_MasterID))
+                .Select(c => new { c.CIR_MasterID, c.CIR_Number, c.Title })
+                .ToListAsync())
+            .GroupBy(c => c.CIR_MasterID).ToDictionary(g => g.Key, g => (g.First().CIR_Number ?? "") + " " + (g.First().Title ?? ""));
+
+        var documentIds = Ids("Document");
+        var documents = documentIds.Count == 0 ? new Dictionary<long, string>() : (await _docs.OtherDocumentMaster.AsNoTracking()
+                .Where(d => documentIds.Contains(d.OtherDocumentMasterID))
+                .Select(d => new { d.OtherDocumentMasterID, d.DocumentNumber, d.DocumentTitle })
+                .ToListAsync())
+            .GroupBy(d => d.OtherDocumentMasterID).ToDictionary(g => g.Key, g => g.First().DocumentNumber + " " + g.First().DocumentTitle);
+
+        foreach (var item in items)
+        {
+            if (item.ItemID is not { } itemId) continue;
+            item.ItemTitle = item.ItemType switch
+            {
+                "Manual" => manuals.GetValueOrDefault(itemId),
+                "Circular" or "Alert" => circulars.GetValueOrDefault(itemId),
+                "Document" => documents.GetValueOrDefault(itemId),
+                _ => null,
+            };
+        }
     }
 
     public async Task<long> CreateAsync(NewSuggestion request, OfficeUser user)
@@ -86,32 +174,49 @@ SELECT SUG_BlobID AS Id, FileName, FileType, BlobSize, AddedOn AS UploadedOn
         var id = await _db.NextIdAsync("SUG_Master", vesselId: SqlDb.OfficeOnly);
         var logId = await _db.NextIdAsync("SUG_Log", vesselId: SqlDb.OfficeOnly);
         var firstBlob = request.Files.Count > 0 ? await _db.NextIdAsync("SUG_Blob", vesselId: SqlDb.OfficeOnly, count: request.Files.Count) : 0;
-        await _db.InTransactionAsync(async () =>
+        var now = DateTime.UtcNow;
+
+        _ctx.SugMasters.Add(new SugMaster
         {
-            await _db.ExecuteAsync(@"
-INSERT dbo.SUG_Master (SUG_MasterID, Origin, VesselID, SuggestionNo, Title, Description, ItemType, ItemID, QuotedText, Priority, Status,
-                       SubmittedBy, SubmittedByName, SubmittedRank, SubmittedOn, IsDeleted)
-VALUES (@id, 'HQ', -2, @no, @title, @desc, @type, @item, @quote, @prio, 'Submitted', @by, @name, @rank, GETUTCDATE(), 0)",
-                ("@id", id), ("@no", $"SUG-{DateTime.UtcNow:yyyy}-{id}"), ("@title", Cut(title, 250)), ("@desc", request.Description),
-                ("@type", itemType), ("@item", itemType == null ? null : request.ItemId), ("@quote", Cut(request.QuotedText, 1000)),
-                ("@prio", priority), ("@by", user.UserId), ("@name", user.UserName), ("@rank", user.Role));
-            await AddLogAsync(logId, id, -2, "Submitted", null, user);
-            var blobId = firstBlob;
-            foreach (var f in request.Files)
-                await _db.ExecuteAsync(@"
-INSERT dbo.SUG_Blob (SUG_BlobID, Origin, VesselID, SUG_MasterID, FileName, FileType, BlobSize, BlobContents, AddedOn)
-VALUES (@id, 'HQ', -2, @sug, @name, @type, @size, @bytes, GETUTCDATE())",
-                    ("@id", blobId++), ("@sug", id), ("@name", Cut(Path.GetFileName(f.FileName), 250)),
-                    ("@type", Cut(Path.GetExtension(f.FileName).TrimStart('.').ToLowerInvariant(), 50)),
-                    ("@size", f.Bytes.Length), ("@bytes", f.Bytes));
+            SUG_MasterID = id,
+            Origin = SqlDb.Office,
+            VesselID = SqlDb.OfficeOnly,
+            SuggestionNo = $"SUG-{now:yyyy}-{id}",
+            Title = Cut(title, 250)!,
+            Description = request.Description,
+            ItemType = itemType,
+            ItemID = itemType == null ? null : request.ItemId,
+            QuotedText = Cut(request.QuotedText, 1000),
+            Priority = priority,
+            Status = "Submitted",
+            SubmittedBy = user.UserId,
+            SubmittedByName = user.UserName,
+            SubmittedRank = user.Role,
+            SubmittedOn = now,
+            IsDeleted = 0,
         });
+        AddLog(logId, id, SqlDb.OfficeOnly, "Submitted", null, user);
+        var blobId = firstBlob;
+        foreach (var f in request.Files)
+            _ctx.SugBlobs.Add(new SugBlob
+            {
+                SUG_BlobID = blobId++,
+                Origin = SqlDb.Office,
+                VesselID = SqlDb.OfficeOnly,
+                SUG_MasterID = id,
+                FileName = Cut(Path.GetFileName(f.FileName), 250),
+                FileType = Cut(Path.GetExtension(f.FileName).TrimStart('.').ToLowerInvariant(), 50),
+                BlobSize = f.Bytes.Length,
+                BlobContents = f.Bytes,
+                AddedOn = now,
+            });
+        await _ctx.SaveChangesAsync();   // one transaction
         return id;
     }
 
     public async Task<string?> ChangeStatusAsync(long id, SuggestionStatusChange request, OfficeUser user)
     {
-        var current = await _db.FirstAsync<SuggestionListItem>(
-            "SELECT SUG_MasterID, VesselID, Status, Title FROM dbo.SUG_Master WHERE SUG_MasterID = @id AND IsDeleted = 0", ("@id", id));
+        var current = await _ctx.SugMasters.FirstOrDefaultAsync(s => s.SUG_MasterID == id && s.IsDeleted == 0);
         if (current == null) return "Suggestion not found.";
         if (!Statuses.Contains(request.Status)) return "Unknown status.";
         if (request.Status == current.Status) return null;
@@ -122,57 +227,59 @@ VALUES (@id, 'HQ', -2, @sug, @name, @type, @size, @bytes, GETUTCDATE())",
 
         var implType = request.Status == "Implemented" && ItemTypes.Contains(request.ImplementedItemType) ? request.ImplementedItemType : null;
         var logId = await _db.NextIdAsync("SUG_Log", vesselId: current.VesselID > 0 ? current.VesselID : -1);
-        await _db.InTransactionAsync(async () =>
+
+        current.Status = request.Status;
+        current.ModifiedOn = DateTime.UtcNow;
+        if (request.Status == "UnderReview" && current.AssignedTo == null) current.AssignedTo = user.UserId;
+        if (request.Status == "Implemented")
         {
-            await _db.ExecuteAsync(@"
-UPDATE dbo.SUG_Master
-   SET Status = @s, ModifiedOn = GETUTCDATE(),
-       AssignedTo = CASE WHEN @s = 'UnderReview' AND AssignedTo IS NULL THEN @me ELSE AssignedTo END,
-       ImplementedItemType = CASE WHEN @s = 'Implemented' THEN @it ELSE ImplementedItemType END,
-       ImplementedItemID = CASE WHEN @s = 'Implemented' THEN @ii ELSE ImplementedItemID END
- WHERE SUG_MasterID = @id",
-                ("@s", request.Status), ("@me", user.UserId), ("@it", implType), ("@ii", implType == null ? null : request.ImplementedItemId),
-                ("@id", id));
-            await AddLogAsync(logId, id, current.VesselID, request.Status, request.Comment, user);
-        });
+            current.ImplementedItemType = implType;
+            current.ImplementedItemID = implType == null ? null : request.ImplementedItemId;
+        }
+        AddLog(logId, id, current.VesselID, request.Status, request.Comment, user);
+        await _ctx.SaveChangesAsync();   // one transaction
         return null;
     }
 
     public async Task AddCommentAsync(long id, string comment, OfficeUser user)
     {
         if (string.IsNullOrWhiteSpace(comment)) return;
-        var vessel = await _db.ScalarAsync("SELECT VesselID FROM dbo.SUG_Master WHERE SUG_MasterID = @id AND IsDeleted = 0", ("@id", id));
-        if (vessel == null) throw new KeyNotFoundException("Suggestion not found.");
-        var vesselId = Convert.ToInt32(vessel);
-        var logId = await _db.NextIdAsync("SUG_Log", vesselId: vesselId > 0 ? vesselId : -1);
-        await AddLogAsync(logId, id, vesselId, null, comment, user);
-        await _db.ExecuteAsync("UPDATE dbo.SUG_Master SET ModifiedOn = GETUTCDATE() WHERE SUG_MasterID = @id", ("@id", id));
+        var suggestion = await _ctx.SugMasters.FirstOrDefaultAsync(s => s.SUG_MasterID == id && s.IsDeleted == 0)
+                         ?? throw new KeyNotFoundException("Suggestion not found.");
+        var logId = await _db.NextIdAsync("SUG_Log", vesselId: suggestion.VesselID > 0 ? suggestion.VesselID : -1);
+        AddLog(logId, id, suggestion.VesselID, null, comment, user);
+        suggestion.ModifiedOn = DateTime.UtcNow;
+        await _ctx.SaveChangesAsync();
     }
 
     public async Task<FileContent?> GetFileAsync(long blobId)
     {
-        var row = await _db.FirstAsync<BlobRow>("SELECT FileName, FileType, BlobContents FROM dbo.SUG_Blob WHERE SUG_BlobID = @id", ("@id", blobId));
+        var row = await _ctx.SugBlobs.AsNoTracking()
+            .Where(b => b.SUG_BlobID == blobId)
+            .Select(b => new { b.FileName, b.BlobContents })
+            .FirstOrDefaultAsync();
         return row?.BlobContents == null ? null : new FileContent(row.BlobContents, ContentTypes.For(row.FileName), row.FileName ?? $"file-{blobId}");
     }
 
     /// <summary>Log rows carry the suggestion's VesselID, so a vessel's suggestion log syncs to that vessel.</summary>
-    private Task AddLogAsync(long logId, long sugId, int vesselId, string? status, string? comment, OfficeUser user)
-        => _db.ExecuteAsync(@"
-INSERT dbo.SUG_Log (SUG_LogID, Origin, VesselID, SUG_MasterID, Status, Comment, UserID, UserName, LogDate)
-VALUES (@id, 'HQ', @v, @sug, @s, @c, @u, @n, GETUTCDATE())",
-            ("@id", logId), ("@v", vesselId), ("@sug", sugId), ("@s", status), ("@c", Cut(comment, 2000)), ("@u", user.UserId), ("@n", user.UserName));
+    private void AddLog(long logId, long sugId, int vesselId, string? status, string? comment, OfficeUser user)
+        => _ctx.SugLogs.Add(new SugLog
+        {
+            SUG_LogID = logId,
+            Origin = SqlDb.Office,
+            VesselID = vesselId,
+            SUG_MasterID = sugId,
+            Status = status,
+            Comment = Cut(comment, 2000),
+            UserID = user.UserId,
+            UserName = user.UserName,
+            LogDate = DateTime.UtcNow,
+        });
 
     private async Task<long> MaxFileBytesAsync()
         => (int.TryParse(await _db.SettingAsync("DM_Settings", "FLD_MaxFileSizeMB"), out var mb) && mb > 0 ? mb : 25) * 1024L * 1024L;
 
     private static string? Cut(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Length <= max ? s.Trim() : s.Trim()[..max];
-
-    private sealed class BlobRow
-    {
-        public string? FileName { get; set; }
-        public string? FileType { get; set; }
-        public byte[]? BlobContents { get; set; }
-    }
 }
 
 /// <summary>Content type from a file name, for downloads.</summary>

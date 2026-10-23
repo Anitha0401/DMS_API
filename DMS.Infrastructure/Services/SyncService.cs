@@ -6,7 +6,9 @@ using DMS.Application.DTO.Sync;
 using DMS.Application.Interface;
 using DMS.Data.EF;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.Features;
 using DMS.Data.EF.Models.Manuals;
 using DMS.Data.EF.Models.OtherDocument;
 using Microsoft.EntityFrameworkCore;
@@ -45,9 +47,14 @@ public partial class SyncService : ISyncService
     private readonly CircularsContext _cir;
     private readonly GeneralContext _general;
     private readonly OtherDocumentsContext _other;
+    private readonly AttachmentStorage _storage;
+    private readonly SqlDb _sql;
 
-    public SyncService(DmsContext dms, CircularsContext cir, GeneralContext general, OtherDocumentsContext other)
+    public SyncService(DmsContext dms, CircularsContext cir, GeneralContext general, OtherDocumentsContext other, AttachmentStorage storage,
+                       SqlDb sql)
     {
+        _storage = storage;
+        _sql = sql;
         _dms = dms;
         _cir = cir;
         _general = general;
@@ -58,27 +65,33 @@ public partial class SyncService : ISyncService
     // Install check and vessel keys
     // =========================================================================================
 
+    private static bool _installed;
+
     public async Task<bool> IsInstalledAsync()
     {
-        var value = await ScalarAsync(
-            "SELECT CASE WHEN OBJECT_ID('dbo.Sync_VesselItem', 'U') IS NULL OR OBJECT_ID('dbo.Sync_VesselKey', 'U') IS NULL " +
-            "OR OBJECT_ID('dbo.Sync_Vessel', 'U') IS NULL OR OBJECT_ID('dbo.Sync_Log', 'U') IS NULL THEN 0 ELSE 1 END");
-        return Convert.ToInt32(value) == 1;
+        if (_installed) return true;
+        foreach (var table in new[] { "Sync_VesselItem", "Sync_VesselKey", "Sync_Vessel", "Sync_Log" })
+            if (!await _general.TableExistsAsync(table)) return false;
+        return _installed = true;
     }
 
     public async Task<bool> ValidateVesselKeyAsync(int vesselId, string key)
     {
         if (vesselId <= 0 || string.IsNullOrWhiteSpace(key)) return false;
 
-        var stored = await ScalarAsync(
-            "SELECT KeyHash FROM dbo.Sync_VesselKey WHERE VesselID = @v AND IsActive = 1", ("@v", vesselId));
-        if (stored is not string storedHash) return false;
+        var storedHash = await _general.SyncVesselKeys.AsNoTracking()
+            .Where(k => k.VesselID == vesselId && k.IsActive)
+            .Select(k => k.KeyHash)
+            .FirstOrDefaultAsync();
+        if (storedHash == null) return false;
 
         var given = Encoding.ASCII.GetBytes(HashKey(key));
         var expected = Encoding.ASCII.GetBytes(storedHash.Trim().ToUpperInvariant());
         if (!CryptographicOperations.FixedTimeEquals(given, expected)) return false;
 
-        await ExecuteAsync("UPDATE dbo.Sync_VesselKey SET LastUsedUtc = SYSUTCDATETIME() WHERE VesselID = @v", ("@v", vesselId));
+        var now = DateTime.UtcNow;
+        await _general.SyncVesselKeys.Where(k => k.VesselID == vesselId)
+            .ExecuteUpdateAsync(u => u.SetProperty(k => k.LastUsedUtc, now));
         return true;
     }
 
@@ -91,19 +104,22 @@ public partial class SyncService : ISyncService
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-        await ExecuteAsync(@"
-MERGE dbo.Sync_VesselKey WITH (HOLDLOCK) AS t
-USING (SELECT @v AS VesselID) AS s ON t.VesselID = s.VesselID
-WHEN MATCHED THEN UPDATE SET KeyHash = @h, IsActive = 1, CreatedUtc = SYSUTCDATETIME(), CreatedBy = @by, LastUsedUtc = NULL
-WHEN NOT MATCHED THEN INSERT (VesselID, KeyHash, IsActive, CreatedUtc, CreatedBy) VALUES (@v, @h, 1, SYSUTCDATETIME(), @by);",
-            ("@v", vesselId), ("@h", HashKey(key)), ("@by", Truncate(createdBy, 150)));
+        var row = await _general.SyncVesselKeys.FirstOrDefaultAsync(k => k.VesselID == vesselId);
+        if (row == null) _general.SyncVesselKeys.Add(row = new SyncVesselKey { VesselID = vesselId });
+        row.KeyHash = HashKey(key);
+        row.IsActive = true;
+        row.CreatedUtc = DateTime.UtcNow;
+        row.CreatedBy = Truncate(createdBy, 150);
+        row.LastUsedUtc = null;
+        await _general.SaveChangesAsync();
+        _general.Entry(row).State = EntityState.Detached;
 
         return key;
     }
 
     public async Task RequestResyncAsync(int vesselId)
     {
-        await ExecuteAsync("DELETE FROM dbo.Sync_VesselItem WHERE VesselID = @v", ("@v", vesselId));
+        await _general.SyncVesselItems.Where(i => i.VesselID == vesselId).ExecuteDeleteAsync();
     }
 
     // =========================================================================================
@@ -140,7 +156,7 @@ WHEN NOT MATCHED THEN INSERT (VesselID, KeyHash, IsActive, CreatedUtc, CreatedBy
         //    Otherwise everything sent in the pull the vessel has applied is now on board.
         if (since <= DateTime.MinValue.AddDays(1))
         {
-            await ExecuteAsync("DELETE FROM dbo.Sync_VesselItem WHERE VesselID = @v", ("@v", vesselId));
+            await _general.SyncVesselItems.Where(i => i.VesselID == vesselId).ExecuteDeleteAsync();
         }
         else
         {
@@ -289,26 +305,17 @@ WHEN NOT MATCHED THEN INSERT (VesselID, KeyHash, IsActive, CreatedUtc, CreatedBy
 
     private async Task<bool> IsOutboxInstalledAsync()
     {
-        _outboxInstalled ??= Convert.ToInt32(await ScalarAsync(
-            "SELECT CASE WHEN OBJECT_ID('dbo.Sync_Outbox', 'U') IS NULL THEN 0 ELSE 1 END")) == 1;
+        _outboxInstalled ??= await _general.TableExistsAsync("Sync_Outbox");
         return _outboxInstalled.Value;
     }
 
     /// <summary>Items with a change-table row not yet downloaded by the vessel (or by every vessel when null).</summary>
     private async Task<List<(int VesselId, string Type, long Id)>> LoadOutboxRowsAsync(int? vesselId)
     {
-        var rows = new List<(int, string, long)>();
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT DISTINCT VesselID, ItemType, ItemID FROM dbo.Sync_Outbox WHERE DownloadedUtc IS NULL" +
-                              (vesselId == null ? "" : " AND VesselID = @v");
-            if (vesselId != null) AddParameter(cmd, "@v", vesselId.Value);
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-                rows.Add((r.GetInt32(0), r.GetString(1).Trim(), r.GetInt64(2)));
-        });
-        return rows;
+        var query = _general.SyncOutbox.AsNoTracking().Where(o => o.DownloadedUtc == null);
+        if (vesselId != null) query = query.Where(o => o.VesselID == vesselId.Value);
+        var rows = await query.Select(o => new { o.VesselID, o.ItemType, o.ItemID }).Distinct().ToListAsync();
+        return rows.Select(r => (r.VesselID, r.ItemType.Trim(), r.ItemID)).ToList();
     }
 
     private async Task<HashSet<(string Type, long Id)>> LoadOutboxAsync(int vesselId) =>
@@ -320,42 +327,39 @@ WHEN NOT MATCHED THEN INSERT (VesselID, KeyHash, IsActive, CreatedUtc, CreatedBy
         var rows = new List<SyncOutboxRowDto>();
         foreach (var chunk in items.Chunk(500))
         {
-            var values = new StringBuilder();
-            var parameters = new List<(string, object?)> { ("@v", vesselId), ("@now", serverTime) };
-            for (var i = 0; i < chunk.Length; i++)
+            var wanted = chunk.ToHashSet();
+            var itemIds = chunk.Select(c => c.Id).Distinct().ToList();
+            var waiting = (await _general.SyncOutbox.AsNoTracking()
+                    .Where(o => o.VesselID == vesselId && o.DownloadedUtc == null && itemIds.Contains(o.ItemID))
+                    .Select(o => new { o.SyncOutboxID, o.ItemType, o.ItemID, o.Action, o.CreatedUtc })
+                    .ToListAsync())
+                .Where(o => wanted.Contains((o.ItemType.Trim(), o.ItemID)))
+                .ToList();
+            if (waiting.Count == 0) continue;
+
+            var ids = waiting.Select(o => o.SyncOutboxID).ToList();
+            await _general.SyncOutbox.Where(o => ids.Contains(o.SyncOutboxID))
+                .ExecuteUpdateAsync(u => u.SetProperty(o => o.SentUtc, serverTime));
+            rows.AddRange(waiting.Select(o => new SyncOutboxRowDto
             {
-                if (i > 0) values.Append(',');
-                values.Append($"(@t{i}, @i{i})");
-                parameters.Add(($"@t{i}", chunk[i].Type));
-                parameters.Add(($"@i{i}", chunk[i].Id));
-            }
-            await WithConnectionAsync(async connection =>
-            {
-                using var cmd = connection.CreateCommand();
-                cmd.CommandText = $@"
-UPDATE o SET SentUtc = @now
-OUTPUT inserted.SyncOutboxID, inserted.ItemType, inserted.ItemID, inserted.Action, inserted.CreatedUtc
-  FROM dbo.Sync_Outbox o
-  JOIN (VALUES {values}) AS s (ItemType, ItemID) ON s.ItemType = o.ItemType AND s.ItemID = o.ItemID
- WHERE o.VesselID = @v AND o.DownloadedUtc IS NULL;";
-                foreach (var (name, value) in parameters) AddParameter(cmd, name, value);
-                using var r = await cmd.ExecuteReaderAsync();
-                while (await r.ReadAsync())
-                {
-                    rows.Add(new SyncOutboxRowDto
-                    {
-                        SyncOutboxID = r.GetInt64(0),
-                        ItemType = r.GetString(1).Trim(),
-                        ItemID = r.GetInt64(2),
-                        Action = r.GetString(3).Trim(),
-                        ChangedUtc = DateTime.SpecifyKind(r.GetDateTime(4), DateTimeKind.Utc),
-                    });
-                }
-            });
+                SyncOutboxID = o.SyncOutboxID,
+                ItemType = o.ItemType.Trim(),
+                ItemID = o.ItemID,
+                Action = o.Action.Trim(),
+                ChangedUtc = DateTime.SpecifyKind(o.CreatedUtc, DateTimeKind.Utc),
+            }));
         }
 
         // Keep the table small: downloaded rows older than 30 days are no longer needed.
-        await ExecuteAsync("DELETE TOP (5000) FROM dbo.Sync_Outbox WHERE DownloadedUtc < DATEADD(day, -30, SYSUTCDATETIME());");
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        var old = await _general.SyncOutbox.AsNoTracking()
+            .Where(o => o.DownloadedUtc < cutoff)
+            .OrderBy(o => o.SyncOutboxID)
+            .Select(o => o.SyncOutboxID)
+            .Take(5000)
+            .ToListAsync();
+        if (old.Count > 0)
+            await _general.SyncOutbox.Where(o => old.Contains(o.SyncOutboxID)).ExecuteDeleteAsync();
         return rows.OrderBy(x => x.SyncOutboxID).ToList();
     }
 
@@ -366,20 +370,23 @@ OUTPUT inserted.SyncOutboxID, inserted.ItemType, inserted.ItemID, inserted.Actio
     /// </summary>
     private async Task ConfirmAppliedAsync(int vesselId, DateTime appliedServerTime)
     {
-        await ExecuteAsync(@"
-DELETE FROM dbo.Sync_VesselItem
- WHERE VesselID = @v AND PendingKey = @del AND PendingUtc <= @since;
-UPDATE dbo.Sync_VesselItem
-   SET ConfirmedKey = PendingKey, ConfirmedUtc = PendingUtc, PendingKey = NULL, PendingUtc = NULL
- WHERE VesselID = @v AND PendingKey IS NOT NULL AND PendingUtc <= @since;",
-            ("@v", vesselId), ("@del", DeletedKey), ("@since", appliedServerTime));
+        await _general.SyncVesselItems
+            .Where(i => i.VesselID == vesselId && i.PendingKey == DeletedKey && i.PendingUtc <= appliedServerTime)
+            .ExecuteDeleteAsync();
+        await _general.SyncVesselItems
+            .Where(i => i.VesselID == vesselId && i.PendingKey != null && i.PendingUtc <= appliedServerTime)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(i => i.ConfirmedKey, i => i.PendingKey)
+                .SetProperty(i => i.ConfirmedUtc, i => i.PendingUtc)
+                .SetProperty(i => i.PendingKey, (string?)null)
+                .SetProperty(i => i.PendingUtc, (DateTime?)null));
 
         if (await IsOutboxInstalledAsync())
         {
-            await ExecuteAsync(@"
-UPDATE dbo.Sync_Outbox SET DownloadedUtc = SYSUTCDATETIME()
- WHERE VesselID = @v AND DownloadedUtc IS NULL AND SentUtc IS NOT NULL AND SentUtc <= @since;",
-                ("@v", vesselId), ("@since", appliedServerTime));
+            var now = DateTime.UtcNow;
+            await _general.SyncOutbox
+                .Where(o => o.VesselID == vesselId && o.DownloadedUtc == null && o.SentUtc != null && o.SentUtc <= appliedServerTime)
+                .ExecuteUpdateAsync(u => u.SetProperty(o => o.DownloadedUtc, now));
         }
     }
 
@@ -398,19 +405,11 @@ UPDATE dbo.Sync_Outbox SET DownloadedUtc = SYSUTCDATETIME()
         {
             foreach (var chunk in request.SyncOutboxIds.Where(id => id > 0).Distinct().Chunk(500))
             {
-                var names = new List<string>();
-                var parameters = new List<(string, object?)> { ("@v", vesselId) };
-                for (var i = 0; i < chunk.Length; i++)
-                {
-                    names.Add($"@id{i}");
-                    parameters.Add(($"@id{i}", chunk[i]));
-                }
-                var count = await ScalarAsync($@"
-UPDATE dbo.Sync_Outbox SET DownloadedUtc = SYSUTCDATETIME()
- WHERE VesselID = @v AND DownloadedUtc IS NULL AND SentUtc IS NOT NULL
-   AND SyncOutboxID IN ({string.Join(",", names)});
-SELECT @@ROWCOUNT;", parameters.ToArray());
-                result.Confirmed += Convert.ToInt32(count);
+                var ids = chunk.ToList();
+                var now = DateTime.UtcNow;
+                result.Confirmed += await _general.SyncOutbox
+                    .Where(o => o.VesselID == vesselId && o.DownloadedUtc == null && o.SentUtc != null && ids.Contains(o.SyncOutboxID))
+                    .ExecuteUpdateAsync(u => u.SetProperty(o => o.DownloadedUtc, now));
             }
         }
 
@@ -434,22 +433,19 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
         var started = DateTime.UtcNow;
         try
         {
-            if (await ScalarAsync("SELECT OBJECT_ID('dbo.Sync_ChangeLog', 'U')") == null) return null;
+            if (!await _general.TableExistsAsync("Sync_ChangeLog")) return null;
             max = Math.Clamp(max, 1, 2000);
             var tables = await LoadSyncTablesAsync();
 
             // The waiting rows, oldest first; one more than asked tells whether more are waiting.
-            var waiting = new List<(long Id, string Table, long Key)>();
-            await WithConnectionAsync(async connection =>
-            {
-                using var cmd = connection.CreateCommand();
-                cmd.CommandText = @"SELECT TOP (@take) SyncChangeID, TableName, KeyValue FROM dbo.Sync_ChangeLog
-                                     WHERE VesselID = @v AND DownloadedUtc IS NULL ORDER BY SyncChangeID";
-                AddParameter(cmd, "@take", max + 1);
-                AddParameter(cmd, "@v", vesselId);
-                using var r = await cmd.ExecuteReaderAsync();
-                while (await r.ReadAsync()) waiting.Add((r.GetInt64(0), r.GetString(1), r.GetInt64(2)));
-            });
+            var waiting = (await _general.SyncChangeLogs.AsNoTracking()
+                    .Where(c => c.VesselID == vesselId && c.DownloadedUtc == null)
+                    .OrderBy(c => c.SyncChangeID)
+                    .Take(max + 1)
+                    .Select(c => new { c.SyncChangeID, c.TableName, c.KeyValue })
+                    .ToListAsync())
+                .Select(c => (Id: c.SyncChangeID, Table: c.TableName, Key: c.KeyValue))
+                .ToList();
             var hasMore = waiting.Count > max;
             if (hasMore) waiting.RemoveAt(waiting.Count - 1);
 
@@ -519,86 +515,50 @@ SELECT @@ROWCOUNT;", parameters.ToArray());
         var total = 0;
         foreach (var chunk in ids.Chunk(1000))
         {
-            await WithConnectionAsync(async connection =>
-            {
-                using var cmd = connection.CreateCommand();
-                var names = new List<string>();
-                for (var i = 0; i < chunk.Length; i++)
-                {
-                    names.Add($"@id{i}");
-                    AddParameter(cmd, $"@id{i}", chunk[i]);
-                }
-                AddParameter(cmd, "@v", vesselId);
-                cmd.CommandText = $"UPDATE dbo.Sync_ChangeLog SET {column} = SYSUTCDATETIME() " +
-                                  $"WHERE VesselID = @v AND SyncChangeID IN ({string.Join(",", names)})" +
-                                  (column == "DownloadedUtc" ? " AND DownloadedUtc IS NULL" : "");
-                total += await cmd.ExecuteNonQueryAsync();
-            });
+            var list = chunk.ToList();
+            var now = DateTime.UtcNow;
+            var rows = _general.SyncChangeLogs.Where(c => c.VesselID == vesselId && list.Contains(c.SyncChangeID));
+            total += column == "SentUtc"
+                ? await rows.ExecuteUpdateAsync(u => u.SetProperty(c => c.SentUtc, now))
+                : await rows.Where(c => c.DownloadedUtc == null).ExecuteUpdateAsync(u => u.SetProperty(c => c.DownloadedUtc, now));
         }
         return total;
     }
 
-    /// <summary>The synced tables (Sync_Table), each with its key, whether it has VesselID, and its columns.</summary>
+    /// <summary>The synced tables (Sync_Table), each with its key, whether it has VesselID, and its columns (dbo.Api_SyncTableColumns).</summary>
     private async Task<Dictionary<string, SyncTableInfo>> LoadSyncTablesAsync()
     {
         var result = new Dictionary<string, SyncTableInfo>(StringComparer.OrdinalIgnoreCase);
-        await WithConnectionAsync(async connection =>
+        var rows = await _general.Database.SqlQuery<SyncTableColumnRow>($"EXEC dbo.Api_SyncTableColumns").ToListAsync();
+        foreach (var r in rows)
         {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = @"
-SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(t.TableName),
-       CASE WHEN COL_LENGTH('dbo.' + QUOTENAME(t.TableName), 'VesselID') IS NULL THEN 0 ELSE 1 END,
-       c.name
-  FROM dbo.Sync_Table t
-  JOIN sys.columns c ON c.object_id = OBJECT_ID('dbo.' + QUOTENAME(t.TableName), 'U')
- WHERE t.IsActive = 1
- ORDER BY t.SortOrder, c.column_id";
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
+            if (!result.TryGetValue(r.TableName, out var info))
             {
-                var name = r.GetString(0);
-                if (!result.TryGetValue(name, out var info))
-                {
-                    info = new SyncTableInfo(name, r.GetInt32(1), r.IsDBNull(2) ? null : r.GetString(2),
-                        Convert.ToBoolean(r.GetValue(3)), r.IsDBNull(4) ? null : r.GetString(4),
-                        Convert.ToInt32(r.GetValue(5)) == 1, new List<string>());
-                    result[name] = info;
-                }
-                info.Columns.Add(r.GetString(6));
+                info = new SyncTableInfo(r.TableName, r.SortOrder, r.BlobColumn, r.AllVessels, r.KeyColumn, r.HasVesselColumn, new List<string>());
+                result[r.TableName] = info;
             }
-        });
+            info.Columns.Add(r.ColumnName);
+        }
         return result;
     }
 
-    /// <summary>The records with these keys, all columns except the file contents, exactly as stored.</summary>
+    /// <summary>The records with these keys, all columns except the file contents, exactly as stored (dbo.Sync_ReadRecords).</summary>
     private async Task<Dictionary<long, Dictionary<string, object?>>> ReadRecordsAsync(SyncTableInfo info, List<long> keys)
     {
         var result = new Dictionary<long, Dictionary<string, object?>>();
-        var columns = info.Columns
-            .Where(c => info.BlobColumn == null || !string.Equals(c, info.BlobColumn, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        var select = string.Join(", ", columns.Select(Bracket));
         foreach (var chunk in keys.Chunk(1000))
         {
-            await WithConnectionAsync(async connection =>
+            var list = new DataTable();
+            list.Columns.Add("KeyValue", typeof(long));
+            list.Columns.Add("VesselID", typeof(int));
+            foreach (var key in chunk.Distinct()) list.Rows.Add(key, DBNull.Value);
+            var keysParameter = new Microsoft.Data.SqlClient.SqlParameter("@Keys", SqlDbType.Structured)
             {
-                using var cmd = connection.CreateCommand();
-                var names = new List<string>();
-                for (var i = 0; i < chunk.Length; i++)
-                {
-                    names.Add($"@k{i}");
-                    AddParameter(cmd, $"@k{i}", chunk[i]);
-                }
-                cmd.CommandText = $"SELECT {select} FROM dbo.{Bracket(info.TableName)} WHERE {Bracket(info.KeyColumn!)} IN ({string.Join(",", names)})";
-                using var r = await cmd.ExecuteReaderAsync();
-                while (await r.ReadAsync())
-                {
-                    var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                    for (var i = 0; i < r.FieldCount; i++)
-                        row[r.GetName(i)] = r.IsDBNull(i) ? null : r.GetValue(i);
-                    result[Convert.ToInt64(row[info.KeyColumn!])] = row;
-                }
-            });
+                TypeName = "dbo.Sync_RowList",
+                Value = list,
+            };
+            foreach (var row in await _sql.ProcRowsAsync("dbo.Sync_ReadRecords", ("@TableName", info.TableName), ("@Keys", keysParameter)))
+                result[Convert.ToInt64(row[info.KeyColumn!])] = row;
         }
         return result;
     }
@@ -620,9 +580,6 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
         // -1 (and the old 0) = every vessel; -2 = office only (Database/012_NewFeatures.sql), never sent.
         return recordVessel is -1 or 0 || recordVessel == vesselId;
     }
-
-    /// <summary>A column or table name in brackets (names come from sys.columns / Sync_Table, never from a caller).</summary>
-    private static string Bracket(string name) => "[" + name.Replace("]", "]]") + "]";
 
     // =========================================================================================
     // Push (acknowledgements made on board)
@@ -850,6 +807,9 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
         var uploadedOn = doc.UploadedOn.HasValue ? ToUtc(doc.UploadedOn.Value) : DateTime.UtcNow;
         // The IDs given on board (Proc_NextID, this vessel's range) when free here, else new ones in that range.
         var masterId = await _other.KeepOrNextIdAsync<OtherDocumentMaster>(doc.VesselDocumentID, TableIdExtensions.OriginVessel, vesselId);
+        long? replacesId = doc.ReplacesID != null && await _other.OtherDocumentMaster.AnyAsync(r => r.OtherDocumentMasterID == doc.ReplacesID)
+            ? doc.ReplacesID
+            : null;
         _other.OtherDocumentMaster.Add(new OtherDocumentMaster
         {
             OtherDocumentMasterID = masterId,
@@ -866,30 +826,44 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
             IsDeleted = 0,
             ModifiedBy = Truncate(doc.UploadedBy?.Trim(), 50),
             ModifiedDate = uploadedOn,
+            // Certificates (Database/012_NewFeatures.sql); ReplacesID only when that document is at the office.
+            CertificateNo = Truncate(doc.CertificateNo?.Trim(), 50),
+            IssuedBy = Truncate(doc.IssuedBy?.Trim(), 150),
+            IssueDate = doc.IssueDate?.Date,
+            ExpiryDate = doc.ExpiryDate?.Date,
+            NextSurveyDate = doc.NextSurveyDate?.Date,
+            ReplacesID = replacesId,
+            OtherDocument_FolderID = doc.OtherDocument_FolderID,
         });
 
         for (var i = 0; i < files.Count; i++)
         {
             var f = doc.Files[i];
+            var fileId = await _other.KeepOrNextIdAsync<OtherDocument_Blob>(f.VesselFileID, TableIdExtensions.OriginVessel, vesselId);
+            var fileName = Truncate(f.FileName, 150);
+            // Kept at the office in the database, a local folder or the cloud, as BlobTableSettings says for OtherDocument_Blob.
+            var stored = await _storage.SaveAsync(AttachmentStorage.OtherDocumentTable, fileId, fileName, files[i]);
             _other.OtherDocument_Blob.Add(new OtherDocument_Blob
             {
-                OtherDocument_BlobID = await _other.KeepOrNextIdAsync<OtherDocument_Blob>(f.VesselFileID, TableIdExtensions.OriginVessel, vesselId),
+                OtherDocument_BlobID = fileId,
                 OtherDocumentMasterID = masterId,
                 Origin = "VSL",
                 VesselID = vesselId,
                 Description = Truncate(f.Description ?? f.FileName, 150),
-                FileName = Truncate(f.FileName, 150),
+                FileName = fileName,
                 FileType = Truncate(f.FileType, 50),
                 OriginalFileType = Truncate(f.OriginalFileType, 50),
                 BlobSize = files[i].Length,
-                BlobContents = files[i],
+                BlobContents = stored.BlobContents,
                 AddedOn = f.AddedOn.HasValue ? ToUtc(f.AddedOn.Value) : DateTime.UtcNow,
-                HQ_Storage_Option = "Database",
-                HQ_Local_Folder = "",
-                HQ_DatabaseName = "",
-                VSL_Storage_Option = "Database",
-                VSL_Local_Folder = "",
-                VSL_DatabaseName = "",
+                Cloud_ContainerName = stored.Cloud_ContainerName,
+                Cloud_Directory = stored.Cloud_Directory,
+                HQ_Storage_Option = stored.HQ_Storage_Option,
+                HQ_Local_Folder = stored.HQ_Local_Folder,
+                HQ_DatabaseName = stored.HQ_DatabaseName,
+                VSL_Storage_Option = stored.VSL_Storage_Option,
+                VSL_Local_Folder = stored.VSL_Local_Folder,
+                VSL_DatabaseName = stored.VSL_DatabaseName,
             });
         }
 
@@ -910,24 +884,6 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
 
         await _other.SaveChangesAsync(); // one transaction: the document, its files and the log row, or nothing
         _other.ChangeTracker.Clear();     // the file bytes are not needed in memory any longer
-
-        // Certificate columns (Database/012_NewFeatures.sql; not mapped in EF).
-        if (doc.CertificateNo != null || doc.IssuedBy != null || doc.IssueDate != null || doc.ExpiryDate != null
-            || doc.NextSurveyDate != null || doc.ReplacesID != null)
-        {
-            await ExecuteAsync(@"UPDATE dbo.OtherDocumentMaster
-                                    SET CertificateNo = @no, IssuedBy = @by, IssueDate = @issue, ExpiryDate = @exp, NextSurveyDate = @survey,
-                                        ReplacesID = (SELECT r.OtherDocumentMasterID FROM dbo.OtherDocumentMaster r WHERE r.OtherDocumentMasterID = @rep)
-                                  WHERE OtherDocumentMasterID = @id",
-                ("@no", Truncate(doc.CertificateNo?.Trim(), 50)), ("@by", Truncate(doc.IssuedBy?.Trim(), 150)),
-                ("@issue", doc.IssueDate?.Date), ("@exp", doc.ExpiryDate?.Date), ("@survey", doc.NextSurveyDate?.Date),
-                ("@rep", doc.ReplacesID), ("@id", masterId));
-        }
-
-        // The folder it was filed in on board (Database/013_DocumentFolders.sql).
-        if (doc.FLD_FolderID != null)
-            await ExecuteAsync("UPDATE dbo.OtherDocumentMaster SET FLD_FolderID = @f WHERE OtherDocumentMasterID = @id",
-                ("@f", doc.FLD_FolderID), ("@id", masterId));
 
         return await OtherDocumentPushResultAsync(masterId, doc, alreadyApplied: false);
     }
@@ -1008,22 +964,18 @@ SELECT t.TableName, t.SortOrder, t.BlobColumn, t.AllVessels, dbo.Sync_KeyColumn(
         int? progress = request.ProgressPercent is int p ? Math.Clamp(p, 0, 100) : null;
         var failed = !request.LastCycleSucceeded;
 
-        await ExecuteAsync(@"
-MERGE dbo.Sync_Vessel WITH (HOLDLOCK) AS t
-USING (SELECT @v AS VesselID) AS s ON t.VesselID = s.VesselID
-WHEN NOT MATCHED THEN INSERT (VesselID, PendingOnShip) VALUES (@v, 0);
-UPDATE dbo.Sync_Vessel
-   SET LastContactUtc = SYSUTCDATETIME(),
-       PendingOnShip = @pending,
-       CurrentActivity = @activity,
-       ProgressPercent = @progress,
-       AppVersion = COALESCE(@app, AppVersion),
-       LastStatus = CASE WHEN @failed = 1 THEN 'Failed' ELSE LastStatus END,
-       LastError = CASE WHEN @failed = 1 THEN @error ELSE LastError END
- WHERE VesselID = @v;",
-            ("@v", request.VesselID), ("@pending", pending), ("@activity", Truncate(request.Activity, 100)),
-            ("@progress", progress), ("@app", Truncate(request.AppVersion, 50)), ("@failed", failed ? 1 : 0),
-            ("@error", Truncate(request.LastError, 1000)));
+        var row = await SyncVesselRowAsync(request.VesselID);
+        row.LastContactUtc = DateTime.UtcNow;
+        row.PendingOnShip = pending;
+        row.CurrentActivity = Truncate(request.Activity, 100);
+        row.ProgressPercent = progress;
+        row.AppVersion = Truncate(request.AppVersion, 50) ?? row.AppVersion;
+        if (failed)
+        {
+            row.LastStatus = "Failed";
+            row.LastError = Truncate(request.LastError, 1000);
+        }
+        await SaveSyncVesselAsync(row);
     }
 
     public async Task<(byte[] Bytes, string FileType, string? FileName)?> GetManualAttachmentBytesAsync(int vesselId, long attachmentId)
@@ -1041,11 +993,16 @@ UPDATE dbo.Sync_Vessel
     {
         var b = await _cir.CIR_Blob.AsNoTracking()
             .Where(x => x.CIR_BlobID == attachmentId)
-            .Select(x => new { x.CIR_MasterID, x.BlobContents, x.FileType, x.FileName })
+            .Select(x => new { x.CIR_MasterID, x.BlobContents, x.FileType, x.FileName,
+                               x.HQ_Storage_Option, x.HQ_Local_Folder, x.Cloud_ContainerName, x.Cloud_Directory })
             .FirstOrDefaultAsync();
-        if (b?.BlobContents == null || b.CIR_MasterID == null) return null;
+        if (b == null || b.CIR_MasterID == null) return null;
         if (!await IsTrackedAsync(vesselId, TypeCircular, b.CIR_MasterID.Value)) return null;
-        return (b.BlobContents, b.FileType ?? "application/octet-stream", b.FileName);
+        // In the database, a local folder or the cloud (BlobTableSettings).
+        var bytes = await _storage.ReadAsync(AttachmentStorage.CircularTable, new AttachmentRef(attachmentId, b.FileName, b.BlobContents,
+            b.HQ_Storage_Option, b.HQ_Local_Folder, b.Cloud_ContainerName, b.Cloud_Directory));
+        if (bytes == null) return null;
+        return (bytes, b.FileType ?? "application/octet-stream", b.FileName);
     }
 
     public async Task<(byte[] Bytes, string FileType, string? FileName)?> GetOtherDocumentFileBytesAsync(int vesselId, long blobId)
@@ -1055,10 +1012,15 @@ UPDATE dbo.Sync_Vessel
                 join m in _other.OtherDocumentMaster.AsNoTracking() on b.OtherDocumentMasterID equals m.OtherDocumentMasterID
                 where b.OtherDocument_BlobID == blobId && (m.VesselID == vesselId || m.VesselID == -1) && (m.IsDeleted ?? 0) != 1
                       && m.IsForOfficeOnly != 1
-                select new { b.BlobContents, b.FileType, b.OriginalFileType, b.FileName })
+                select new { b.BlobContents, b.FileType, b.OriginalFileType, b.FileName,
+                             b.HQ_Storage_Option, b.HQ_Local_Folder, b.Cloud_ContainerName, b.Cloud_Directory })
             .FirstOrDefaultAsync();
-        if (f?.BlobContents == null) return null;
-        return (f.BlobContents, f.FileType ?? f.OriginalFileType ?? "application/octet-stream", f.FileName);
+        if (f == null) return null;
+        // In the database, a local folder or the cloud (BlobTableSettings).
+        var bytes = await _storage.ReadAsync(AttachmentStorage.OtherDocumentTable, new AttachmentRef(blobId, f.FileName, f.BlobContents,
+            f.HQ_Storage_Option, f.HQ_Local_Folder, f.Cloud_ContainerName, f.Cloud_Directory));
+        if (bytes == null) return null;
+        return (bytes, f.FileType ?? f.OriginalFileType ?? "application/octet-stream", f.FileName);
     }
 
     /// <summary>Every document type, and this vessel's documents (or all vessels' -1) with their file details.</summary>
@@ -1365,20 +1327,15 @@ UPDATE dbo.Sync_Vessel
     {
         var rows = new List<(int, string, long)>();
         if (vesselIds.Count == 0) return rows;
-        _fullCopyInstalled ??= Convert.ToInt32(await ScalarAsync(
-            "SELECT CASE WHEN OBJECT_ID('dbo.Sync_FullCopyItem', 'U') IS NULL THEN 0 ELSE 1 END")) == 1;
+        _fullCopyInstalled ??= await _general.TableExistsAsync("Sync_FullCopyItem");
         if (!_fullCopyInstalled.Value) return rows;
 
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            // Vessel IDs are ints from our own code, so they can be listed inline.
-            cmd.CommandText = "SELECT VesselID, ItemType, ItemID FROM dbo.Sync_FullCopyItem WHERE VesselID IN (" +
-                              string.Join(",", vesselIds.Distinct()) + ")";
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-                rows.Add((r.GetInt32(0), r.GetString(1).Trim(), r.GetInt64(2)));
-        });
+        var ids = vesselIds.Distinct().ToList();
+        var items = await _general.SyncFullCopyItems.AsNoTracking()
+            .Where(f => ids.Contains(f.VesselID))
+            .Select(f => new { f.VesselID, f.ItemType, f.ItemID })
+            .ToListAsync();
+        rows.AddRange(items.Select(f => (f.VesselID, f.ItemType.Trim(), f.ItemID)));
         return rows;
     }
 
@@ -1641,81 +1598,61 @@ UPDATE dbo.Sync_Vessel
     /// <summary>The fixed tables, every row (no filter), ordered by key so the version key is stable.</summary>
     private async Task<FixedTables> LoadFixedTablesAsync()
     {
-        var dmStatuses = await ReadRowsAsync(
-            "SELECT DM_StatusID, Origin, VesselID, StatusCode, StatusName, IsDisabled, IsVisible, SortOrder FROM dbo.DM_Status ORDER BY DM_StatusID",
-            r => new SyncDmStatusDto
+        var dmStatuses = (await _dms.DmStatuses.AsNoTracking().OrderBy(x => x.DmStatusId).ToListAsync())
+            .Select(x => new SyncDmStatusDto
             {
-                DM_StatusID = Convert.ToInt64(r.GetValue(0)),
-                Origin = r.IsDBNull(1) ? string.Empty : Convert.ToString(r.GetValue(1))!.TrimEnd(),
-                VesselID = Convert.ToInt32(r.GetValue(2)),
-                StatusCode = r.IsDBNull(3) ? null : Convert.ToString(r.GetValue(3))!.TrimEnd(),
-                StatusName = r.IsDBNull(4) ? string.Empty : Convert.ToString(r.GetValue(4))!.TrimEnd(),
-                IsDisabled = r.IsDBNull(5) ? null : (int?)Convert.ToInt32(r.GetValue(5)),
-                IsVisible = r.IsDBNull(6) ? null : (int?)Convert.ToInt32(r.GetValue(6)),
-                SortOrder = r.IsDBNull(7) ? null : (int?)Convert.ToInt32(r.GetValue(7)),
-            });
-        var dmSettings = await ReadRowsAsync(
-            "SELECT DM_SettingsID, Origin, VesselID, SettingName, SettingValue FROM dbo.DM_Settings ORDER BY DM_SettingsID",
-            r => new SyncDmSettingDto
+                DM_StatusID = x.DmStatusId,
+                Origin = x.Origin?.TrimEnd() ?? string.Empty,
+                VesselID = x.VesselID,
+                StatusCode = x.StatusCode?.TrimEnd(),
+                StatusName = x.StatusName?.TrimEnd() ?? string.Empty,
+                IsDisabled = x.IsDisabled,
+                IsVisible = x.IsVisible,
+                SortOrder = x.SortOrder,
+            })
+            .ToList();
+        var dmSettings = (await _dms.DmSettings.AsNoTracking().OrderBy(x => x.DmSettingsId).ToListAsync())
+            .Select(x => new SyncDmSettingDto
             {
-                DM_SettingsID = Convert.ToInt64(r.GetValue(0)),
-                Origin = r.IsDBNull(1) ? string.Empty : Convert.ToString(r.GetValue(1))!.TrimEnd(),
-                VesselID = Convert.ToInt32(r.GetValue(2)),
-                SettingName = r.IsDBNull(3) ? string.Empty : Convert.ToString(r.GetValue(3))!.TrimEnd(),
-                SettingValue = r.IsDBNull(4) ? null : Convert.ToString(r.GetValue(4))!.TrimEnd(),
-            });
-        var cirSettings = await ReadRowsAsync(
-            "SELECT CIR_SettingsID, Origin, VesselID, SettingName, SettingValue FROM dbo.CIR_Settings ORDER BY CIR_SettingsID",
-            r => new SyncCirSettingDto
+                DM_SettingsID = x.DmSettingsId,
+                Origin = x.Origin?.TrimEnd() ?? string.Empty,
+                VesselID = x.VesselID,
+                SettingName = x.SettingName?.TrimEnd() ?? string.Empty,
+                SettingValue = x.SettingValue?.TrimEnd(),
+            })
+            .ToList();
+        var cirSettings = (await _cir.CIR_Settings.AsNoTracking().OrderBy(x => x.CIR_SettingsID).ToListAsync())
+            .Select(x => new SyncCirSettingDto
             {
-                CIR_SettingsID = Convert.ToInt64(r.GetValue(0)),
-                Origin = r.IsDBNull(1) ? string.Empty : Convert.ToString(r.GetValue(1))!.TrimEnd(),
-                VesselID = Convert.ToInt32(r.GetValue(2)),
-                SettingName = r.IsDBNull(3) ? string.Empty : Convert.ToString(r.GetValue(3))!.TrimEnd(),
-                SettingValue = r.IsDBNull(4) ? null : Convert.ToString(r.GetValue(4))!.TrimEnd(),
-            });
-        // TableIDstart (start of each vessel's ID range for Proc_NextID) goes along when V_Vessel has that column.
-        var hasTableIdStart = await ScalarAsync("SELECT COL_LENGTH('dbo.V_Vessel', 'TableIDstart')") != null;
-        var vessels = await ReadRowsAsync(
-            "SELECT V_VesselID, Origin, VesselID, VslCode, VslName, VslType, DelivDate, BaseCurrency, VslEmailAddress, OperateBy, IsRetired, " +
-            (hasTableIdStart ? "TableIDstart" : "CAST(NULL AS bigint)") + " FROM dbo.V_Vessel ORDER BY V_VesselID",
-            r => new SyncVesselDto
+                CIR_SettingsID = x.CIR_SettingsID,
+                Origin = x.Origin?.TrimEnd() ?? string.Empty,
+                VesselID = x.VesselID,
+                SettingName = x.SettingName?.TrimEnd() ?? string.Empty,
+                SettingValue = x.SettingValue?.TrimEnd(),
+            })
+            .ToList();
+        // TableIDstart (start of each vessel's ID range for Proc_NextID) goes along when V_Vessel has that column
+        // (dbo.Api_VesselIdRanges returns NULLs when it does not).
+        var idStart = (await _general.Database.SqlQuery<VesselIdRangeRow>($"EXEC dbo.Api_VesselIdRanges").ToListAsync())
+            .GroupBy(r => r.VesselID).ToDictionary(g => g.Key, g => g.First().TableIDstart);
+        var vessels = (await _general.VVessels.AsNoTracking().OrderBy(x => x.VVesselId).ToListAsync())
+            .Select(x => new SyncVesselDto
             {
-                V_VesselID = Convert.ToInt64(r.GetValue(0)),
-                Origin = r.IsDBNull(1) ? string.Empty : Convert.ToString(r.GetValue(1))!.TrimEnd(),
-                VesselID = Convert.ToInt32(r.GetValue(2)),
-                VslCode = r.IsDBNull(3) ? string.Empty : Convert.ToString(r.GetValue(3))!.TrimEnd(),
-                VslName = r.IsDBNull(4) ? string.Empty : Convert.ToString(r.GetValue(4))!.TrimEnd(),
-                VslType = r.IsDBNull(5) ? null : Convert.ToString(r.GetValue(5))!.TrimEnd(),
-                DelivDate = r.IsDBNull(6) ? null : (DateTime?)r.GetDateTime(6),
-                BaseCurrency = r.IsDBNull(7) ? null : Convert.ToString(r.GetValue(7))!.TrimEnd(),
-                VslEmailAddress = r.IsDBNull(8) ? null : Convert.ToString(r.GetValue(8))!.TrimEnd(),
-                OperateBy = r.IsDBNull(9) ? null : Convert.ToString(r.GetValue(9))!.TrimEnd(),
-                IsRetired = r.IsDBNull(10) ? null : (int?)Convert.ToInt32(r.GetValue(10)),
-                TableIDstart = r.IsDBNull(11) ? null : (long?)Convert.ToInt64(r.GetValue(11)),
-            });
+                V_VesselID = x.VVesselId,
+                Origin = x.Origin?.TrimEnd() ?? string.Empty,
+                VesselID = x.VesselID,
+                VslCode = x.VslCode?.TrimEnd() ?? string.Empty,
+                VslName = x.VslName?.TrimEnd() ?? string.Empty,
+                VslType = x.VslType?.TrimEnd(),
+                DelivDate = x.DelivDate,
+                BaseCurrency = x.BaseCurrency?.TrimEnd(),
+                VslEmailAddress = x.VslEmailAddress?.TrimEnd(),
+                OperateBy = x.OperateBy?.TrimEnd(),
+                IsRetired = x.IsRetired,
+                TableIDstart = idStart.GetValueOrDefault(x.VesselID),
+            })
+            .ToList();
         return new FixedTables(dmStatuses, dmSettings, cirSettings, vessels);
-    }
-
-    /// <summary>Runs a query and maps each row; a table that does not exist gives an empty list.</summary>
-    private async Task<List<T>> ReadRowsAsync<T>(string sql, Func<DbDataReader, T> map)
-    {
-        var rows = new List<T>();
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            try
-            {
-                using var r = await cmd.ExecuteReaderAsync();
-                while (await r.ReadAsync()) rows.Add(map(r));
-            }
-            catch (DbException ex) when (ex.Message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase))
-            {
-                // Table not in this database: nothing to send.
-            }
-        });
-        return rows;
     }
 
     private async Task<(List<SyncManualCategoryDto>, List<SyncCircularCategoryDto>)> LoadCategoriesAsync()
@@ -1748,23 +1685,10 @@ UPDATE dbo.Sync_Vessel
     /// <summary>Tracked items of one vessel (or all vessels when null).</summary>
     private async Task<List<TrackedRow>> LoadTrackedRowsAsync(int? vesselId)
     {
-        var rows = new List<TrackedRow>();
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT VesselID, ItemType, ItemID, PendingKey, ConfirmedKey FROM dbo.Sync_VesselItem" +
-                              (vesselId == null ? "" : " WHERE VesselID = @v");
-            if (vesselId != null) AddParameter(cmd, "@v", vesselId.Value);
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-            {
-                rows.Add(new TrackedRow(
-                    r.GetInt32(0), r.GetString(1).Trim(), r.GetInt64(2),
-                    r.IsDBNull(3) ? null : r.GetString(3).Trim(),
-                    r.IsDBNull(4) ? null : r.GetString(4).Trim()));
-            }
-        });
-        return rows;
+        var query = _general.SyncVesselItems.AsNoTracking();
+        if (vesselId != null) query = query.Where(i => i.VesselID == vesselId.Value);
+        var rows = await query.Select(i => new { i.VesselID, i.ItemType, i.ItemID, i.PendingKey, i.ConfirmedKey }).ToListAsync();
+        return rows.Select(r => new TrackedRow(r.VesselID, r.ItemType.Trim(), r.ItemID, r.PendingKey?.Trim(), r.ConfirmedKey?.Trim())).ToList();
     }
 
     private async Task<Dictionary<(string Type, long Id), TrackedRow>> LoadTrackedAsync(int vesselId) =>
@@ -1772,57 +1696,85 @@ UPDATE dbo.Sync_Vessel
 
     private async Task<bool> IsTrackedAsync(int vesselId, string type, long id)
     {
-        var value = await ScalarAsync(
-            "SELECT COUNT(*) FROM dbo.Sync_VesselItem WHERE VesselID = @v AND ItemType = @t AND ItemID = @id AND ISNULL(PendingKey, '') <> @del",
-            ("@v", vesselId), ("@t", type), ("@id", id), ("@del", DeletedKey));
-        return Convert.ToInt32(value) > 0;
+        return await _general.SyncVesselItems.AsNoTracking()
+            .AnyAsync(i => i.VesselID == vesselId && i.ItemType == type && i.ItemID == id && (i.PendingKey ?? "") != DeletedKey);
     }
 
     private async Task MarkPendingAsync(int vesselId, List<(string Type, long Id, string Key)> rows, DateTime serverTime)
     {
-        // 500 rows x 3 parameters per statement keeps well under SQL Server's 2100-parameter limit.
-        foreach (var chunk in rows.Chunk(500))
+        // Load-or-add per chunk; one SaveChanges per chunk.
+        foreach (var chunk in rows.GroupBy(r => (r.Type, r.Id)).Select(g => g.Last()).Chunk(500))
         {
-            var values = new StringBuilder();
-            var parameters = new List<(string, object?)> { ("@v", vesselId), ("@now", serverTime) };
-            for (var i = 0; i < chunk.Length; i++)
+            var itemIds = chunk.Select(c => c.Id).Distinct().ToList();
+            var existing = (await _general.SyncVesselItems
+                    .Where(i => i.VesselID == vesselId && itemIds.Contains(i.ItemID))
+                    .ToListAsync())
+                .GroupBy(i => (i.ItemType.Trim(), i.ItemID))
+                .ToDictionary(g => g.Key, g => g.First());
+            foreach (var (type, id, key) in chunk)
             {
-                if (i > 0) values.Append(',');
-                values.Append($"(@t{i}, @i{i}, @k{i})");
-                parameters.Add(($"@t{i}", chunk[i].Type));
-                parameters.Add(($"@i{i}", chunk[i].Id));
-                parameters.Add(($"@k{i}", chunk[i].Key));
+                if (!existing.TryGetValue((type, id), out var item))
+                    _general.SyncVesselItems.Add(item = new SyncVesselItem { VesselID = vesselId, ItemType = type, ItemID = id });
+                item.PendingKey = key;
+                item.PendingUtc = serverTime;
             }
+            await _general.SaveChangesAsync();
+            _general.ChangeTracker.Clear();
+        }
+    }
 
-            await ExecuteAsync($@"
-MERGE dbo.Sync_VesselItem WITH (HOLDLOCK) AS t
-USING (VALUES {values}) AS s (ItemType, ItemID, ItemKey)
-   ON t.VesselID = @v AND t.ItemType = s.ItemType AND t.ItemID = s.ItemID
-WHEN MATCHED THEN UPDATE SET PendingKey = s.ItemKey, PendingUtc = @now
-WHEN NOT MATCHED THEN INSERT (VesselID, ItemType, ItemID, PendingKey, PendingUtc) VALUES (@v, s.ItemType, s.ItemID, s.ItemKey, @now);",
-                parameters.ToArray());
+    /// <summary>The Sync_Vessel row of a vessel, tracked (a new one when the vessel has none yet).</summary>
+    private async Task<SyncVessel> SyncVesselRowAsync(int vesselId)
+    {
+        var row = await _general.SyncVessels.FirstOrDefaultAsync(v => v.VesselID == vesselId);
+        if (row == null) _general.SyncVessels.Add(row = new SyncVessel { VesselID = vesselId, PendingOnShip = 0 });
+        return row;
+    }
+
+    /// <summary>Saves a Sync_Vessel row; when another call added it at the same moment, applies the change to that one.</summary>
+    private async Task SaveSyncVesselAsync(SyncVessel row, SyncLog? log = null)
+    {
+        if (log != null) _general.SyncLogs.Add(log);
+        try
+        {
+            await _general.SaveChangesAsync();
+        }
+        catch (DbUpdateException) when (_general.Entry(row).State == EntityState.Added)
+        {
+            // The row was added by a parallel call: update that one instead.
+            var values = _general.Entry(row).CurrentValues.Clone();
+            _general.Entry(row).State = EntityState.Detached;
+            var stored = await _general.SyncVessels.FirstAsync(v => v.VesselID == row.VesselID);
+            _general.Entry(stored).CurrentValues.SetValues(values);
+            await _general.SaveChangesAsync();
+        }
+        finally
+        {
+            _general.ChangeTracker.Clear();
         }
     }
 
     private async Task RecordCallAsync(int vesselId, string direction, DateTime startedUtc, int items, string? error)
     {
         var ok = error == null;
-        await ExecuteAsync(@"
-MERGE dbo.Sync_Vessel WITH (HOLDLOCK) AS t
-USING (SELECT @v AS VesselID) AS s ON t.VesselID = s.VesselID
-WHEN NOT MATCHED THEN INSERT (VesselID, PendingOnShip) VALUES (@v, 0);
-UPDATE dbo.Sync_Vessel
-   SET LastContactUtc = SYSUTCDATETIME(),
-       LastSuccessUtc = CASE WHEN @ok = 1 THEN SYSUTCDATETIME() ELSE LastSuccessUtc END,
-       LastPullUtc = CASE WHEN @dir = 'Down' THEN SYSUTCDATETIME() ELSE LastPullUtc END,
-       LastPushUtc = CASE WHEN @dir = 'Up' THEN SYSUTCDATETIME() ELSE LastPushUtc END,
-       LastStatus = CASE WHEN @ok = 1 THEN 'OK' ELSE 'Failed' END,
-       LastError = @error
- WHERE VesselID = @v;
-INSERT INTO dbo.Sync_Log (VesselID, Direction, StartedUtc, FinishedUtc, ItemsCount, Status, Error)
-VALUES (@v, @dir, @started, SYSUTCDATETIME(), @items, CASE WHEN @ok = 1 THEN 'OK' ELSE 'Failed' END, @error);",
-            ("@v", vesselId), ("@dir", direction), ("@ok", ok ? 1 : 0), ("@started", startedUtc),
-            ("@items", items), ("@error", Truncate(error, 1000)));
+        var now = DateTime.UtcNow;
+        var row = await SyncVesselRowAsync(vesselId);
+        row.LastContactUtc = now;
+        if (ok) row.LastSuccessUtc = now;
+        if (direction == "Down") row.LastPullUtc = now;
+        if (direction == "Up") row.LastPushUtc = now;
+        row.LastStatus = ok ? "OK" : "Failed";
+        row.LastError = Truncate(error, 1000);
+        await SaveSyncVesselAsync(row, new SyncLog
+        {
+            VesselID = vesselId,
+            Direction = direction,
+            StartedUtc = startedUtc,
+            FinishedUtc = now,
+            ItemsCount = items,
+            Status = ok ? "OK" : "Failed",
+            Error = Truncate(error, 1000),
+        });
     }
 
     private async Task TryRecordCallAsync(int vesselId, string direction, DateTime startedUtc, string error)
@@ -1834,48 +1786,6 @@ VALUES (@v, @dir, @started, SYSUTCDATETIME(), @items, CASE WHEN @ok = 1 THEN 'OK
     // =========================================================================================
     // Helpers
     // =========================================================================================
-
-    private async Task WithConnectionAsync(Func<DbConnection, Task> work)
-    {
-        var connection = _general.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try { await work(connection); }
-        finally { if (openedHere) await connection.CloseAsync(); }
-    }
-
-    private async Task<object?> ScalarAsync(string sql, params (string Name, object? Value)[] parameters)
-    {
-        object? result = null;
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            foreach (var (name, value) in parameters) AddParameter(cmd, name, value);
-            result = await cmd.ExecuteScalarAsync();
-        });
-        return result is DBNull ? null : result;
-    }
-
-    private async Task ExecuteAsync(string sql, params (string Name, object? Value)[] parameters)
-    {
-        await WithConnectionAsync(async connection =>
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            foreach (var (name, value) in parameters) AddParameter(cmd, name, value);
-            await cmd.ExecuteNonQueryAsync();
-        });
-    }
-
-    private static void AddParameter(DbCommand cmd, string name, object? value)
-    {
-        var p = cmd.CreateParameter();
-        p.ParameterName = name;
-        p.Value = value ?? DBNull.Value;
-        if (value is DateTime) p.DbType = DbType.DateTime2;
-        cmd.Parameters.Add(p);
-    }
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 

@@ -2,86 +2,42 @@ using System.Net;
 using System.Text.RegularExpressions;
 using DMS.Application.DTO.Features;
 using DMS.Application.Interface;
+using DMS.Data.EF.Context;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.Data.EF.Features;
 
 /// <summary>
 /// Feature 8, phase 1: one search box over manuals (number, name and the text of the latest version), circulars and
-/// alerts, other documents and certificates, and suggestions. Plain SQL LIKE matching, every word must match.
+/// alerts, other documents and certificates, and suggestions. LIKE matching in dbo.Api_Search (Database/020_ApiProcedures.sql), every word must match.
 /// Phase 2 (AI assistant over the same sources, through a cloud provider) plugs in behind this same service.
 /// </summary>
 public sealed partial class SearchService : ISearchService
 {
     public static readonly string[] Types = { "Manual", "Circular", "Document", "Suggestion" };
     private const int PerType = 50;
-    private readonly SqlDb _db;
+    private const int MaxWords = 6;
+    private readonly GeneralContext _db;
 
-    public SearchService(SqlDb db) => _db = db;
+    public SearchService(GeneralContext db) => _db = db;
 
     public async Task<List<SearchHit>> SearchAsync(string query, string? types, OfficeUser user)
     {
         var words = (query ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(w => w.Length > 100 ? w[..100] : w).Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToList();
+            .Select(w => w.Length > 100 ? w[..100] : w).Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxWords).ToList();
         if (words.Count == 0 || words.Sum(w => w.Length) < 2) return new List<SearchHit>();
 
         var wanted = string.IsNullOrWhiteSpace(types)
-            ? Types.ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            ? Types.ToList()
+            : types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(t => Types.Contains(t, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (wanted.Count == 0) return new List<SearchHit>();
 
-        var ps = new List<(string, object?)> { ("@me", user.UserId), ("@dept", user.Dept ?? ""), ("@first", words[0]) };
-        for (var i = 0; i < words.Count; i++) ps.Add(($"@w{i}", "%" + Escape(words[i]) + "%"));
-        string All(string haystack) => string.Join(" AND ", words.Select((_, i) => $"{haystack} LIKE @w{i} ESCAPE '\\'"));
-
-        var hits = new List<SearchHit>();
-
-        if (wanted.Contains("Manual"))
-        {
-            const string hay = "(m.ManualNo + ' ' + ISNULL(m.ManualName, '') + ' ' + ISNULL(v.TextContents, ''))";
-            hits.AddRange(await _db.QueryAsync<SearchHit>($@"
-SELECT TOP ({PerType}) 'Manual' AS ItemType, m.DM_ManualID AS ItemID, m.ManualNo AS Number, m.ManualName AS Title,
-       SUBSTRING(v.TextContents, CASE WHEN CHARINDEX(@first, v.TextContents) > 150 THEN CHARINDEX(@first, v.TextContents) - 150 ELSE 1 END, 450) AS Snippet,
-       m.VesselID, COALESCE(v.ReleasedDate, v.CreatedDate) AS Date
-  FROM dbo.DM_Manual m
-  OUTER APPLY (SELECT TOP (1) x.TextContents, x.ReleasedDate, x.CreatedDate FROM dbo.DM_ManualVersion x
-                WHERE x.DM_ManualID = m.DM_ManualID ORDER BY x.DM_ManualVersionID DESC) v
- WHERE ISNULL(m.IsDeleted, 0) <> 1 AND {All(hay)}
- ORDER BY CASE WHEN m.ManualNo LIKE @w0 ESCAPE '\' OR m.ManualName LIKE @w0 ESCAPE '\' THEN 0 ELSE 1 END, m.ManualNo", ps.ToArray()));
-        }
-
-        if (wanted.Contains("Circular"))
-        {
-            const string hay = "(ISNULL(c.CIR_Number, '') + ' ' + ISNULL(c.Title, '') + ' ' + ISNULL(c.Reference, '') + ' ' + ISNULL(c.Remarks, ''))";
-            hits.AddRange(await _db.QueryAsync<SearchHit>($@"
-SELECT TOP ({PerType}) CASE WHEN c.CircularType = 'Alert' THEN 'Alert' ELSE 'Circular' END AS ItemType, c.CIR_MasterID AS ItemID,
-       c.CIR_Number AS Number, c.Title, LEFT(c.Remarks, 400) AS Snippet, c.VesselID, COALESCE(c.ReleasedDate, c.DateIssued, c.CreatedDate) AS Date
-  FROM dbo.CIR_Master c
- WHERE ISNULL(c.IsDeleted, 0) <> 1 AND {All(hay)}
- ORDER BY COALESCE(c.ReleasedDate, c.DateIssued, c.CreatedDate) DESC", ps.ToArray()));
-        }
-
-        if (wanted.Contains("Document"))
-        {
-            const string hay = "(d.DocumentNumber + ' ' + d.DocumentTitle + ' ' + ISNULL(d.Reference, '') + ' ' + ISNULL(d.Comments, '') + ' ' + ISNULL(d.CertificateNo, '') + ' ' + ISNULL(d.IssuedBy, '') + ' ' + ISNULL(t.DocumentType, ''))";
-            hits.AddRange(await _db.QueryAsync<SearchHit>($@"
-SELECT TOP ({PerType}) CASE WHEN t.IsCertificate = 1 THEN 'Certificate' ELSE 'Document' END AS ItemType, d.OtherDocumentMasterID AS ItemID,
-       d.DocumentNumber AS Number, d.DocumentTitle AS Title, LEFT(ISNULL(t.DocumentType + ': ', '') + ISNULL(d.Comments, ''), 400) AS Snippet,
-       d.VesselID, COALESCE(d.UploadedOn, d.CreatedDate) AS Date
-  FROM dbo.OtherDocumentMaster d
-  LEFT JOIN dbo.OtherDocument_Type t ON t.OtherDocument_TypeID = d.OtherDocument_TypeID
- WHERE ISNULL(d.IsDeleted, 0) <> 1 AND {All(hay)}
- ORDER BY COALESCE(d.UploadedOn, d.CreatedDate) DESC", ps.ToArray()));
-        }
-
-        if (wanted.Contains("Suggestion"))
-        {
-            const string hay = "(ISNULL(s.SuggestionNo, '') + ' ' + s.Title + ' ' + ISNULL(s.Description, '') + ' ' + ISNULL(s.QuotedText, ''))";
-            hits.AddRange(await _db.QueryAsync<SearchHit>($@"
-SELECT TOP ({PerType}) 'Suggestion' AS ItemType, s.SUG_MasterID AS ItemID, s.SuggestionNo AS Number, s.Title,
-       LEFT(s.Status + ' - ' + ISNULL(s.Description, ''), 400) AS Snippet, s.VesselID, s.SubmittedOn AS Date
-  FROM dbo.SUG_Master s
- WHERE s.IsDeleted = 0 AND {All(hay)}
- ORDER BY s.SubmittedOn DESC", ps.ToArray()));
-        }
+        // dbo.Api_Search: every word (a LIKE pattern, or NULL when there are fewer words) must match.
+        var w = Enumerable.Range(0, MaxWords).Select(i => i < words.Count ? "%" + Escape(words[i]) + "%" : null).ToArray();
+        var hits = await _db.Database.SqlQuery<SearchHit>($@"EXEC dbo.Api_Search @Types = {string.Join(",", wanted)}, @First = {words[0]},
+    @W0 = {w[0]}, @W1 = {w[1]}, @W2 = {w[2]}, @W3 = {w[3]}, @W4 = {w[4]}, @W5 = {w[5]}, @PerType = {PerType}")
+            .ToListAsync();
 
         foreach (var h in hits) h.Snippet = Clean(h.Snippet);
         return hits;

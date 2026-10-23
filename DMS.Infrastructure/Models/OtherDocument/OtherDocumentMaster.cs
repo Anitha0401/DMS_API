@@ -17,7 +17,7 @@ public partial class OtherDocumentMaster
     [Column("VesselID")]
     public int VesselID { get; set; }
 
-    public long? FLD_FolderID { get; set; }
+    public long? OtherDocument_FolderID { get; set; }
 
     /// <summary>
     /// 1 = added at the office and kept there: never sent to a vessel, even though VesselID is the vessel it is about
@@ -52,6 +52,22 @@ public partial class OtherDocumentMaster
     public int? IsDeleted { get; set; }
 
     public DateTime? ExpiryDate { get; set; }
+
+    // Certificates (012_NewFeatures.sql)
+    [StringLength(50)]
+    public string? CertificateNo { get; set; }
+
+    [StringLength(150)]
+    public string? IssuedBy { get; set; }
+
+    [Column(TypeName = "datetime")]
+    public DateTime? IssueDate { get; set; }
+
+    [Column(TypeName = "datetime")]
+    public DateTime? NextSurveyDate { get; set; }
+
+    /// <summary>The document this one replaces (a renewed certificate).</summary>
+    public long? ReplacesID { get; set; }
 
     [NotMapped]
     public string? CreatedBy { get; set; }

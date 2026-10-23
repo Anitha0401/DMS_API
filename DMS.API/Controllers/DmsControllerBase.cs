@@ -1,9 +1,10 @@
 using DMS.API.Auth;
 using DMS.Application.DTO.Features;
-using DMS.Data.EF.Features;
+using DMS.Data.EF.Context;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.EntityFrameworkCore;
 
 namespace DMS.API.Controllers;
 
@@ -62,8 +63,11 @@ public abstract class DmsControllerBase : ControllerBase, IAsyncActionFilter
             return loaded;
 
         var id = CurrentUserId;
-        var db = HttpContext.RequestServices.GetRequiredService<SqlDb>();
-        var row = await db.FirstAsync<UserRow>("SELECT TOP (1) UserName, HQDept FROM dbo.HQ_Users WHERE UserId = @id", ("@id", id));
+        var db = HttpContext.RequestServices.GetRequiredService<GeneralContext>();
+        var row = await db.HqUsers.AsNoTracking()
+            .Where(u => u.UserId == id)
+            .Select(u => new { u.UserName, u.HQDept })
+            .FirstOrDefaultAsync();
         var user = new OfficeUser(id, row?.UserName ?? User.FindFirst(DmsClaims.Name)?.Value ?? id, CurrentUserRole, row?.HQDept);
 
         HttpContext.Items[CurrentUserItemKey] = user;
@@ -87,10 +91,4 @@ public abstract class DmsControllerBase : ControllerBase, IAsyncActionFilter
         => file == null ? NotFound() : File(file.Bytes, file.ContentType, file.FileName);
 
     protected IActionResult Done(string? error) => error == null ? Ok() : BadRequest(new { message = error });
-
-    private sealed class UserRow
-    {
-        public string? UserName { get; set; }
-        public string? HQDept { get; set; }
-    }
 }

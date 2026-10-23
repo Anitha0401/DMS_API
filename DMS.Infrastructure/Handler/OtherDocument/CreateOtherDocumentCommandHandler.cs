@@ -13,9 +13,11 @@ namespace DMS.Data.EF.Handler
         private readonly IMapper _mapper;
         private readonly CIRGeneralQueries _queries;
         private readonly OtherDocumentsContext _dbContext;
+        private readonly AttachmentStorage _storage;
 
-        public CreateOtherDocumentCommandHandler(OtherDocumentsContext dbContext, IMapper mapper, CIRGeneralQueries queries)
+        public CreateOtherDocumentCommandHandler(OtherDocumentsContext dbContext, IMapper mapper, CIRGeneralQueries queries, AttachmentStorage storage)
         {
+            _storage = storage;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "OtherDocumentsContext cannot be null");
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper), "Mapper cannot be null");
             _queries = queries;
@@ -67,17 +69,21 @@ namespace DMS.Data.EF.Handler
                     FileType = dto.FileType,
                     OriginalFileType = dto.OriginalFileType,
                     BlobSize = dto.BlobSize,
-                    BlobContents = dto.BlobContents,
-                    AddedOn = DateTime.UtcNow,
-                    Cloud_ContainerName = null,
-                    Cloud_Directory = null,
-                    HQ_Storage_Option = origin == "HQ" ? "Database" : null,
-                    HQ_Local_Folder = origin == "HQ" ? "" : null,
-                    HQ_DatabaseName = origin == "HQ" ? "" : null,
-                    VSL_Storage_Option = origin == "VSL" ? "Database" : null,
-                    VSL_Local_Folder = origin == "VSL" ? "" : null,
-                    VSL_DatabaseName = origin == "VSL" ? "" : null
+                    AddedOn = DateTime.UtcNow
                 };
+
+                // The file goes to the database, a local folder or the cloud, as BlobTableSettings says for OtherDocument_Blob.
+                var stored = await _storage.SaveAsync(AttachmentStorage.OtherDocumentTable, cir_Blob.OtherDocument_BlobID,
+                    cir_Blob.FileName, dto.BlobContents, cancellationToken);
+                cir_Blob.BlobContents = stored.BlobContents;
+                cir_Blob.Cloud_ContainerName = stored.Cloud_ContainerName;
+                cir_Blob.Cloud_Directory = stored.Cloud_Directory;
+                cir_Blob.HQ_Storage_Option = stored.HQ_Storage_Option;
+                cir_Blob.HQ_Local_Folder = stored.HQ_Local_Folder;
+                cir_Blob.HQ_DatabaseName = stored.HQ_DatabaseName;
+                cir_Blob.VSL_Storage_Option = stored.VSL_Storage_Option;
+                cir_Blob.VSL_DatabaseName = stored.VSL_DatabaseName;
+                cir_Blob.VSL_Local_Folder = stored.VSL_Local_Folder;
 
                 _dbContext.OtherDocument_Blob.Add(cir_Blob);
 

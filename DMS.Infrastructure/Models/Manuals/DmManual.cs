@@ -74,4 +74,7 @@ public partial class DmManual
     public DateTime? ModifiedDate { get; set; }
 
     public int? IsDeleted { get; set; }
+
+    /// <summary>Days the vessels have to acknowledge (012_NewFeatures.sql).</summary>
+    public int? AckDueDays { get; set; }
 }

@@ -61,8 +61,8 @@ public partial class OtherDocumentsContext : DbContext
 
         modelBuilder.Entity<FldFolder>(entity =>
         {
-            entity.HasKey(e => e.FLD_FolderID).HasName("PK_FLD_Folder");
-            entity.Property(e => e.FLD_FolderID).ValueGeneratedNever();
+            entity.HasKey(e => e.OtherDocument_FolderID).HasName("PK_OtherDocument_Folder");
+            entity.Property(e => e.OtherDocument_FolderID).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<OtherDocument_Blob>(entity =>

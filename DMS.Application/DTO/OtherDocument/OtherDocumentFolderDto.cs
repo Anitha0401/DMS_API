@@ -4,7 +4,7 @@ namespace DMS.Application.DTO.OtherDocument;
 
 public class FolderItem
 {
-    public long FLD_FolderID { get; set; }
+    public long OtherDocument_FolderID { get; set; }
     public int VesselID { get; set; }
     public string? VesselName { get; set; }
     public long? ParentID { get; set; }
@@ -20,7 +20,7 @@ public class FolderItem
 
     public sealed record SaveFolder(long? ParentId, string Name, string Scope, int? VesselId, string? ViewRoles, string? EditRoles);
 
-    /// <summary>An Other Document as shown in a folder (OtherDocumentMaster.FLD_FolderID).</summary>
+    /// <summary>An Other Document as shown in a folder (OtherDocumentMaster.OtherDocument_FolderID).</summary>
     public class FolderDocument
     {
         public long OtherDocumentMasterID { get; set; }
@@ -28,7 +28,7 @@ public class FolderItem
         /// <summary>The vessel the document is about; -2 for an office document added without a vessel.</summary>
         public int VesselID { get; set; }
         public string? VesselName { get; set; }
-        public long? FLD_FolderID { get; set; }
+        public long? OtherDocument_FolderID { get; set; }
         public string? FolderName { get; set; }
         /// <summary>OtherDocumentMaster.IsForOfficeOnly: added at the office and kept there, never sent to a vessel.</summary>
         public bool IsForOfficeOnly { get; set; }
@@ -53,9 +53,10 @@ public class FolderItem
 
     /// <summary>
     /// A new document added at the office. VesselId = the vessel it is about (the selected vessel); without one it is
-    /// stored with VesselID -2. Either way it is marked IsForOfficeOnly = 1 and never sent to a vessel.
+    /// stored with VesselID -2. Normally it is marked IsForOfficeOnly = 1 and never sent to a vessel; with
+    /// SendToVessel (a vessel is required) it is IsForOfficeOnly = 0 and goes to that vessel with the next sync.
     /// </summary>
     public sealed record NewFolderDocument(long TypeId, string DocumentNumber, string Title, string? Status, string? Reference,
-        string? Comments, int? VesselId, List<UploadedFile> Files);
+        string? Comments, int? VesselId, List<UploadedFile> Files, bool SendToVessel = false);
 
-    public sealed record MoveDocument(long? FolderId);
+    public sealed record MoveDocument(long? FolderId);

@@ -1,5 +1,6 @@
 using DMS.Data.EF;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -10,10 +11,48 @@ namespace DMS.Infrastructure.Query.Circulars;
 public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsCommand, long>
 {
     private readonly CircularsContext _context;
+    private readonly AttachmentStorage _storage;
 
-    public UpdateCircularsCommandHandler(CircularsContext context)
+    public UpdateCircularsCommandHandler(CircularsContext context, AttachmentStorage storage)
     {
         _context = context;
+        _storage = storage;
+    }
+
+    private static AttachmentRef RefOf(CIR_Blob b)
+        => new(b.CIR_BlobID, b.FileName, null, b.HQ_Storage_Option, b.HQ_Local_Folder, b.Cloud_ContainerName, b.Cloud_Directory);
+
+    private static void Apply(CIR_Blob b, StoredAttachment s)
+    {
+        b.BlobContents = s.BlobContents;
+        b.Cloud_ContainerName = s.Cloud_ContainerName;
+        b.Cloud_Directory = s.Cloud_Directory;
+        b.HQ_Storage_Option = s.HQ_Storage_Option;
+        b.HQ_Local_Folder = s.HQ_Local_Folder;
+        b.HQ_DatabaseName = s.HQ_DatabaseName;
+        b.VSL_Storage_Option = s.VSL_Storage_Option;
+        b.VSL_DatabaseName = s.VSL_DatabaseName;
+        b.VSL_Local_Folder = s.VSL_Local_Folder;
+    }
+
+    /// <summary>A new CIR_Blob row for this circular, its file saved as BlobTableSettings says.</summary>
+    private async Task AddBlobAsync(DMS.Application.DTO.Circulars.EditCircularDto dto, CancellationToken ct)
+    {
+        var newBlob = new CIR_Blob
+        {
+            CIR_BlobID = await _context.NextIdAsync<CIR_Blob>(ct: ct),
+            CIR_MasterID = dto.CIR_MasterID,
+            Origin = "HQ",
+            VesselID = -1,
+            Description = dto.Description ?? string.Empty,
+            FileName = dto.FileName,
+            FileType = dto.FileType,
+            OriginalFileType = dto.OriginalFileType,
+            BlobSize = dto.BlobSize,
+            AddedOn = DateTime.UtcNow
+        };
+        Apply(newBlob, await _storage.SaveAsync(AttachmentStorage.CircularTable, newBlob.CIR_BlobID, newBlob.FileName, dto.BlobContents, ct));
+        await _context.CIR_Blob.AddAsync(newBlob, ct);
     }
 
     public async Task<long> Handle(UpdateCircularsCommand request, CancellationToken cancellationToken)
@@ -41,6 +80,9 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
 
         _context.CIR_Master.Update(master);
 
+        // Stored files (local folder / cloud) that are no longer used: removed only once the changes are saved.
+        var oldFiles = new List<AttachmentRef>();
+
         try
         {
             var blob = await _context.CIR_Blob
@@ -48,17 +90,22 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
 
             if (blob != null)
             {
+                var oldFile = RefOf(blob);
                 if (dto.BlobContents != null && dto.BlobContents.Length > 0)
                 {
-                    blob.BlobContents = dto.BlobContents;
                     blob.BlobSize = dto.BlobSize;
                     blob.FileName = dto.FileName;
                     blob.FileType = dto.FileType;
                     blob.OriginalFileType = dto.OriginalFileType;
                     blob.AddedOn = DateTime.UtcNow;
+                    Apply(blob, await _storage.SaveAsync(AttachmentStorage.CircularTable, blob.CIR_BlobID, blob.FileName, dto.BlobContents, cancellationToken));
+
+                    // The previous file, when it was kept somewhere else (another name, folder or container).
+                    if (oldFile != RefOf(blob)) oldFiles.Add(oldFile);
                 }
                 else
                 {
+                    oldFiles.Add(oldFile);
                     blob.FileName = null;
                     blob.FileType = null;
                     blob.OriginalFileType = null;
@@ -80,19 +127,7 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
             else if (dto.BlobContents != null && dto.BlobContents.Length > 0)
             {
                 // create new blob entry linked to master
-                var newBlob = new CIR_Blob
-                {
-                    CIR_MasterID = dto.CIR_MasterID,
-                    Description = dto.Description ?? string.Empty,
-                    FileName = dto.FileName,
-                    FileType = dto.FileType,
-                    OriginalFileType = dto.OriginalFileType,
-                    BlobSize = dto.BlobSize,
-                    BlobContents = dto.BlobContents,
-                    AddedOn = DateTime.UtcNow
-                };
-
-                await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
+                await AddBlobAsync(dto, cancellationToken);
             }
         }
         catch (SqlNullValueException sqlNullEx)
@@ -101,19 +136,7 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
             // If client provided new blob contents, create a new blob record instead of failing.
             if (dto.BlobContents != null && dto.BlobContents.Length > 0)
             {
-                var newBlob = new CIR_Blob
-                {
-                    CIR_MasterID = dto.CIR_MasterID,
-                    Description = dto.Description ?? string.Empty,
-                    FileName = dto.FileName,
-                    FileType = dto.FileType,
-                    OriginalFileType = dto.OriginalFileType,
-                    BlobSize = dto.BlobSize,
-                    BlobContents = dto.BlobContents,
-                    AddedOn = DateTime.UtcNow
-                };
-
-                await _context.CIR_Blob.AddAsync(newBlob, cancellationToken);
+                await AddBlobAsync(dto, cancellationToken);
             }
             else
             {
@@ -167,6 +190,9 @@ public class UpdateCircularsCommandHandler : IRequestHandler<UpdateCircularsComm
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        foreach (var stale in oldFiles)
+            await _storage.DeleteAsync(AttachmentStorage.CircularTable, stale, cancellationToken);
+
         return master.CIR_MasterID;
     }
-}
+}

@@ -39,13 +39,11 @@ public sealed class AckDashboardService : IAckDashboardService
             .Select(v => new AckVesselSummary { VesselID = v.VesselID, VesselName = v.VslName })
             .ToListAsync();
 
-        if (await _db.ScalarAsync("SELECT OBJECT_ID('dbo.Sync_Vessel', 'U')") != null)
-        {
-            var sync = (await _db.QueryAsync<AckVesselSummary>("SELECT VesselID, LastSuccessUtc AS LastSyncUtc FROM dbo.Sync_Vessel"))
-                .ToDictionary(s => s.VesselID, s => s.LastSyncUtc);
-            foreach (var vessel in vessels)
-                vessel.LastSyncUtc = sync.TryGetValue(vessel.VesselID, out var lastSync) ? lastSync : null;
-        }
+        var sync = await _dbContext.SyncVessels.AsNoTracking()
+            .Select(s => new { s.VesselID, s.LastSuccessUtc })
+            .ToDictionaryAsync(s => s.VesselID, s => s.LastSuccessUtc);
+        foreach (var vessel in vessels)
+            vessel.LastSyncUtc = sync.TryGetValue(vessel.VesselID, out var lastSync) ? lastSync : null;
 
         foreach (var vessel in vessels)
         {

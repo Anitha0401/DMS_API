@@ -149,18 +149,6 @@ public class ManualGeneralQueries : IManualGeneralQueries
     // ---------------------------------------------------------------- Approval cycle
     // DM_Manual_ApprovedList.DM_ManualVersionID / IsVoid (Database/015_BackendFixes.sql) tie each approval to the
     // version it was given for, so a new version, or a version sent back, goes through the whole flow again.
-    // Before the script is run, every approval of the manual counts (the old behaviour).
-
-    private static bool _approvalCycleInstalled;
-
-    private async Task<bool> ApprovalCycleInstalledAsync()
-    {
-        if (_approvalCycleInstalled) return true;
-        var found = await _dbContext.Database.SqlQueryRaw<int>(
-            "SELECT CASE WHEN COL_LENGTH('dbo.DM_Manual_ApprovedList', 'DM_ManualVersionID') IS NOT NULL " +
-            "AND COL_LENGTH('dbo.DM_Manual_ApprovedList', 'IsVoid') IS NOT NULL THEN 1 ELSE 0 END AS [Value]").SingleAsync();
-        return _approvalCycleInstalled = found == 1;
-    }
 
     public sealed class ApprovedRole
     {
@@ -169,20 +157,11 @@ public class ManualGeneralQueries : IManualGeneralQueries
     }
 
     /// <summary>The role/department pairs that have already approved this version in its current cycle.</summary>
-    public async Task<List<ApprovedRole>> GetApprovedRolesAsync(long dm_ManualID, long dm_ManualVersionID)
-    {
-        if (await ApprovalCycleInstalledAsync())
-        {
-            return await _dbContext.Database.SqlQuery<ApprovedRole>($@"
-SELECT UserRole, HQDept FROM dbo.DM_Manual_ApprovedList
- WHERE DM_ManualID = {dm_ManualID} AND DM_ManualVersionID = {dm_ManualVersionID} AND ISNULL(IsVoid, 0) = 0").ToListAsync();
-        }
-
-        return await _dbContext.DmManualApprovedLists
-            .Where(a => a.DM_ManualID == dm_ManualID)
+    public Task<List<ApprovedRole>> GetApprovedRolesAsync(long dm_ManualID, long dm_ManualVersionID)
+        => _dbContext.DmManualApprovedLists.AsNoTracking()
+            .Where(a => a.DM_ManualID == dm_ManualID && a.DM_ManualVersionID == dm_ManualVersionID && (a.IsVoid ?? 0) == 0)
             .Select(a => new ApprovedRole { UserRole = a.UserRole, HQDept = a.HQDept })
             .ToListAsync();
-    }
 
     /// <summary>The first approver (by ApprovalOrder) at this status who has not yet approved this version.</summary>
     public async Task<DmApprovalAndMailSetup?> GetNextApproverAsync(int? approval_FlowID, long dm_StatusID, long dm_ManualID, long dm_ManualVersionID)
@@ -200,22 +179,16 @@ SELECT UserRole, HQDept FROM dbo.DM_Manual_ApprovedList
     }
 
     /// <summary>Records which version an approval (already saved) was given for.</summary>
-    public async Task TagApprovalAsync(long dm_ManualApprovedListID, long dm_ManualVersionID)
-    {
-        if (!await ApprovalCycleInstalledAsync()) return;
-        await _dbContext.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE dbo.DM_Manual_ApprovedList SET DM_ManualVersionID = {dm_ManualVersionID}, IsVoid = 0
- WHERE DM_Manual_ApprovedListID = {dm_ManualApprovedListID}");
-    }
+    public Task TagApprovalAsync(long dm_ManualApprovedListID, long dm_ManualVersionID)
+        => _dbContext.DmManualApprovedLists
+            .Where(a => a.DmManualApprovedListId == dm_ManualApprovedListID)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.DM_ManualVersionID, dm_ManualVersionID).SetProperty(a => a.IsVoid, 0));
 
     /// <summary>Send back or version removed: this version's approvals no longer count (they stay as history).</summary>
-    public async Task VoidApprovalsAsync(long dm_ManualID, long dm_ManualVersionID)
-    {
-        if (!await ApprovalCycleInstalledAsync()) return;
-        await _dbContext.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE dbo.DM_Manual_ApprovedList SET IsVoid = 1
- WHERE DM_ManualID = {dm_ManualID} AND DM_ManualVersionID = {dm_ManualVersionID} AND ISNULL(IsVoid, 0) = 0");
-    }
+    public Task VoidApprovalsAsync(long dm_ManualID, long dm_ManualVersionID)
+        => _dbContext.DmManualApprovedLists
+            .Where(a => a.DM_ManualID == dm_ManualID && a.DM_ManualVersionID == dm_ManualVersionID && (a.IsVoid ?? 0) == 0)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.IsVoid, 1));
 
     public async Task AddToLog(long dm_ManualID, long dm_ManualVersionID, string activity, string remarks)
     {

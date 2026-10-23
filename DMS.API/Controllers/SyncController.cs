@@ -58,7 +58,9 @@ public class SyncController : ControllerBase
     /// <summary>POST api/Sync/ChangesConfirm: the ship has saved these changes (sets Sync_ChangeLog.DownloadedUtc).</summary>
     [HttpPost("ChangesConfirm")]
     public async Task<ActionResult<SyncChangesConfirmResult>> ConfirmChanges([FromBody] SyncChangesConfirmRequest request)
-        => Ok(await _service.ConfirmChangesAsync(VesselId, request.ChangeIds));
+    {
+        return Ok(await _service.ConfirmChangesAsync(VesselId, request.ChangeIds));
+    }
 
     /// <summary>
     /// POST api/Sync/Confirm: the vessel has applied a pull. Marks the change-table rows it downloaded

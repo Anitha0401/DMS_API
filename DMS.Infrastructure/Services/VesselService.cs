@@ -1,6 +1,7 @@
 ﻿using DMS.Application.DTO;
 using DMS.Application.Interface;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Query.Manuals;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -165,20 +166,17 @@ public class VesselService : IVesselService
     {
         var manuals = new List<long>();
         var circulars = new List<long>();
-        await WithConnectionAsync(async connection =>
+        if (!await _dbContext.TableExistsAsync("Sync_FullCopyItem")) return (manuals, circulars);
+        var rows = await _dbContext.SyncFullCopyItems.AsNoTracking()
+            .Where(f => f.VesselID == vesselId)
+            .Select(f => new { f.ItemType, f.ItemID })
+            .ToListAsync();
+        foreach (var row in rows)
         {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = @"IF OBJECT_ID('dbo.Sync_FullCopyItem', 'U') IS NOT NULL
-    SELECT ItemType, ItemID FROM dbo.Sync_FullCopyItem WHERE VesselID = @v;";
-            AddParameter(cmd, "@v", vesselId);
-            using var r = await cmd.ExecuteReaderAsync();
-            while (await r.ReadAsync())
-            {
-                var type = r.GetString(0).Trim();
-                if (type == "Manual") manuals.Add(r.GetInt64(1));
-                else if (type == "Circular") circulars.Add(r.GetInt64(1));
-            }
-        });
+            var type = row.ItemType.Trim();
+            if (type == "Manual") manuals.Add(row.ItemID);
+            else if (type == "Circular") circulars.Add(row.ItemID);
+        }
         return (manuals, circulars);
     }
 
@@ -187,41 +185,33 @@ public class VesselService : IVesselService
         var result = new VesselSyncHistoryDto { SyncInstalled = await _sync.IsInstalledAsync() };
         if (!result.SyncInstalled) return result;
 
-        await WithConnectionAsync(async connection =>
+        var key = await _dbContext.SyncVesselKeys.AsNoTracking()
+            .Where(k => k.VesselID == vesselId && k.IsActive)
+            .Select(k => new { k.CreatedUtc, k.CreatedBy, k.LastUsedUtc })
+            .FirstOrDefaultAsync();
+        if (key != null)
         {
-            using (var key = connection.CreateCommand())
-            {
-                key.CommandText = "SELECT CreatedUtc, CreatedBy, LastUsedUtc FROM dbo.Sync_VesselKey WHERE VesselID = @vesselId AND IsActive = 1";
-                AddParameter(key, "@vesselId", vesselId);
-                using var r = await key.ExecuteReaderAsync();
-                if (await r.ReadAsync())
-                {
-                    result.HasKey = true;
-                    result.KeyCreatedUtc = Utc(r.GetDateTime(0));
-                    result.KeyCreatedBy = r.IsDBNull(1) ? null : r.GetString(1);
-                    result.KeyLastUsedUtc = r.IsDBNull(2) ? null : Utc(r.GetDateTime(2));
-                }
-            }
+            result.HasKey = true;
+            result.KeyCreatedUtc = Utc(key.CreatedUtc);
+            result.KeyCreatedBy = key.CreatedBy;
+            result.KeyLastUsedUtc = key.LastUsedUtc == null ? null : Utc(key.LastUsedUtc.Value);
+        }
 
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = @"SELECT TOP 200 SyncLogID, Direction, StartedUtc, FinishedUtc, ItemsCount, Status, Error
-                                FROM dbo.Sync_Log WHERE VesselID = @vesselId ORDER BY StartedUtc DESC, SyncLogID DESC";
-            AddParameter(cmd, "@vesselId", vesselId);
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                result.Entries.Add(new VesselSyncLogDto
-                {
-                    SyncLogID = reader.GetInt64(0),
-                    Direction = reader.GetString(1),
-                    StartedUtc = Utc(reader.GetDateTime(2)),
-                    FinishedUtc = reader.IsDBNull(3) ? null : Utc(reader.GetDateTime(3)),
-                    ItemsCount = reader.GetInt32(4),
-                    Status = reader.GetString(5),
-                    Error = reader.IsDBNull(6) ? null : reader.GetString(6)
-                });
-            }
-        });
+        var entries = await _dbContext.SyncLogs.AsNoTracking()
+            .Where(l => l.VesselID == vesselId)
+            .OrderByDescending(l => l.StartedUtc).ThenByDescending(l => l.SyncLogID)
+            .Take(200)
+            .ToListAsync();
+        result.Entries.AddRange(entries.Select(e => new VesselSyncLogDto
+        {
+            SyncLogID = e.SyncLogID,
+            Direction = e.Direction,
+            StartedUtc = Utc(e.StartedUtc),
+            FinishedUtc = e.FinishedUtc == null ? null : Utc(e.FinishedUtc.Value),
+            ItemsCount = e.ItemsCount,
+            Status = e.Status,
+            Error = e.Error,
+        }));
         return result;
     }
 
@@ -284,34 +274,18 @@ public class VesselService : IVesselService
         var queued = new Dictionary<int, HashSet<(string ItemType, long ItemId)>>();
         if (result.SyncInstalled)
         {
-            await WithConnectionAsync(async connection =>
-            {
-                using (var cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = @"SELECT VesselID, LastContactUtc, LastSuccessUtc, LastStatus, LastError,
-                                               PendingOnShip, CurrentActivity, ProgressPercent, AppVersion
-                                        FROM dbo.Sync_Vessel";
-                    using var r = await cmd.ExecuteReaderAsync();
-                    while (await r.ReadAsync())
-                    {
-                        link[r.GetInt32(0)] = new LinkInfo(
-                            r.IsDBNull(1) ? null : Utc(r.GetDateTime(1)),
-                            r.IsDBNull(2) ? null : Utc(r.GetDateTime(2)),
-                            r.IsDBNull(3) ? null : r.GetString(3),
-                            r.IsDBNull(4) ? null : r.GetString(4),
-                            r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                            r.IsDBNull(6) ? null : r.GetString(6),
-                            r.IsDBNull(7) ? null : r.GetInt32(7),
-                            r.IsDBNull(8) ? null : r.GetString(8));
-                    }
-                }
-                using (var cmd = connection.CreateCommand())
-                {
-                    cmd.CommandText = "SELECT VesselID FROM dbo.Sync_VesselKey WHERE IsActive = 1";
-                    using var r = await cmd.ExecuteReaderAsync();
-                    while (await r.ReadAsync()) hasKey.Add(r.GetInt32(0));
-                }
-            });
+            var links = await _dbContext.SyncVessels.AsNoTracking().ToListAsync();
+            foreach (var r in links)
+                link[r.VesselID] = new LinkInfo(
+                    r.LastContactUtc == null ? null : Utc(r.LastContactUtc.Value),
+                    r.LastSuccessUtc == null ? null : Utc(r.LastSuccessUtc.Value),
+                    r.LastStatus,
+                    r.LastError,
+                    r.PendingOnShip,
+                    r.CurrentActivity,
+                    r.ProgressPercent,
+                    r.AppVersion);
+            hasKey.UnionWith(await _dbContext.SyncVesselKeys.AsNoTracking().Where(k => k.IsActive).Select(k => k.VesselID).ToListAsync());
             queued = await _sync.GetQueuedItemsAsync(vesselIds);
         }
 
@@ -390,23 +364,6 @@ public class VesselService : IVesselService
         circularType != null && circularType.Trim().StartsWith("alert", StringComparison.OrdinalIgnoreCase);
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
-
-    private async Task WithConnectionAsync(Func<System.Data.Common.DbConnection, Task> work)
-    {
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try { await work(connection); }
-        finally { if (openedHere) await connection.CloseAsync(); }
-    }
-
-    private static void AddParameter(System.Data.Common.DbCommand cmd, string name, object value)
-    {
-        var p = cmd.CreateParameter();
-        p.ParameterName = name;
-        p.Value = value;
-        cmd.Parameters.Add(p);
-    }
 
     private static HashSet<string> RankSet(IEnumerable<string?> ranks) =>
         new(ranks.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r!.Trim()), StringComparer.OrdinalIgnoreCase);

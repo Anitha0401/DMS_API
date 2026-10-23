@@ -29,4 +29,7 @@ public partial class CIR_Category
     
     [StringLength(10)]
     public string? Sortorder { get; set; }
+
+    /// <summary>1 = circulars in this category need a valid-until date (012_NewFeatures.sql).</summary>
+    public int RequiresValidUntil { get; set; }
 }

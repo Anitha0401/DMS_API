@@ -261,8 +261,7 @@ BEGIN
         TableID_SetupID bigint      NOT NULL CONSTRAINT PK_TableID_Setup PRIMARY KEY,
         TableName       varchar(50) NOT NULL,
         VesselID        int         NOT NULL,
-        LastNumber      bigint      NOT NULL,
-        ToTrf           int         NULL
+        LastNumber      bigint      NOT NULL
     );
     CREATE UNIQUE INDEX IX_TableID_Setup_Table_Vessel ON dbo.TableID_Setup (TableName, VesselID);
 END;

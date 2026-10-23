@@ -355,8 +355,8 @@ public class OtherDocumentPushDto
     /// <summary>The certificate this one renews (an ID the office already holds).</summary>
     public long? ReplacesID { get; set; }
 
-    /// <summary>The folder the document was filed in on board (FLD_Folder, same ID at the office).</summary>
-    public long? FLD_FolderID { get; set; }
+    /// <summary>The folder the document was filed in on board (OtherDocument_Folder, same ID at the office).</summary>
+    public long? OtherDocument_FolderID { get; set; }
 }
 
 /// <summary>

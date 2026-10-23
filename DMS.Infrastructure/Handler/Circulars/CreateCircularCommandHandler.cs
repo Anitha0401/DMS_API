@@ -2,6 +2,7 @@
 using DMS.Application.DTO.Circulars;
 using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
+using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
 using DMS.Data.EF.Query.Circulars;
 using MediatR;
@@ -14,9 +15,11 @@ namespace DMS.Data.EF.Handler
         private readonly IMapper _mapper;
         private readonly CIRGeneralQueries _queries;
         private readonly CircularsContext _dbContext;
+        private readonly AttachmentStorage _storage;
 
-        public CreateCircularCommandHandler(CircularsContext dbContext, IMapper mapper, CIRGeneralQueries queries)
+        public CreateCircularCommandHandler(CircularsContext dbContext, IMapper mapper, CIRGeneralQueries queries, AttachmentStorage storage)
         {
+            _storage = storage;
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext), "CircularsContext cannot be null");
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper), "Mapper cannot be null");
             _queries = queries;
@@ -48,12 +51,20 @@ namespace DMS.Data.EF.Handler
                 cir_Blob.CIR_MasterID = cir_Master.CIR_MasterID;
                 cir_Blob.Origin = "HQ";
                 cir_Blob.VesselID = -1;
-                cir_Blob.HQ_Storage_Option = "Database";
-                cir_Blob.HQ_Local_Folder = "";
-                cir_Blob.HQ_DatabaseName = "";
                 cir_Blob.AddedOn = DateTime.UtcNow;
-                cir_Blob.Cloud_ContainerName = null;
-                cir_Blob.Cloud_Directory = null;
+
+                // The attachment goes to the database, a local folder or the cloud, as BlobTableSettings says for CIR_Blob.
+                var stored = await _storage.SaveAsync(AttachmentStorage.CircularTable, cir_Blob.CIR_BlobID,
+                    cir_Blob.FileName, request.createCIR.BlobContents, cancellationToken);
+                cir_Blob.BlobContents = stored.BlobContents;
+                cir_Blob.Cloud_ContainerName = stored.Cloud_ContainerName;
+                cir_Blob.Cloud_Directory = stored.Cloud_Directory;
+                cir_Blob.HQ_Storage_Option = stored.HQ_Storage_Option;
+                cir_Blob.HQ_Local_Folder = stored.HQ_Local_Folder;
+                cir_Blob.HQ_DatabaseName = stored.HQ_DatabaseName;
+                cir_Blob.VSL_Storage_Option = stored.VSL_Storage_Option;
+                cir_Blob.VSL_DatabaseName = stored.VSL_DatabaseName;
+                cir_Blob.VSL_Local_Folder = stored.VSL_Local_Folder;
 
                 _dbContext.CIR_Blob.Add(cir_Blob);
 

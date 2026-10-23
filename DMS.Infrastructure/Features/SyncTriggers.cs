@@ -15,6 +15,17 @@ internal static class SyncRowTriggers
         "DM_Category", "DM_Manual", "DM_ManualVersion", "DM_Manual_Attachments", "DM_Manual_ToAck_Vsl", "DM_Manual_UserAck",
         "CIR_Category", "CIR_Master", "CIR_Blob", "CIR_ToAck_Vsl", "CIR_UserAck",
         "OtherDocument_Type", "OtherDocumentMaster", "OtherDocument_Blob",
+        // 012_NewFeatures.sql
+        "CIR_ManualLink", "DMS_Inbox", "SUG_Master", "SUG_Log", "SUG_Blob", "OtherDocument_Folder",
+    };
+
+    /// <summary>Other triggers that make EF Core leave out the OUTPUT clause (012_NewFeatures.sql).</summary>
+    private static readonly Dictionary<string, string> OtherTriggers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["DM_ManualVersion"] = "TR_DM_ManualVersion_Inbox",
+        ["DM_Manual"] = "TR_DM_Manual_AckDueDays",
+        ["CIR_Master"] = "TR_CIR_Master_Inbox",
+        ["OtherDocumentMaster"] = "TR_OtherDocumentMaster_Inbox",
     };
 
     /// <summary>Declares the sync trigger on every entity of this context that is mapped to a synced table.</summary>
@@ -23,8 +34,11 @@ internal static class SyncRowTriggers
         foreach (var entityType in modelBuilder.Model.GetEntityTypes().ToList())
         {
             var table = entityType.GetTableName();
-            if (table == null || entityType.IsOwned() || !SyncedTables.Contains(table)) continue;
-            modelBuilder.Entity(entityType.ClrType).ToTable(t => t.HasTrigger($"TR_{table}_SyncRow"));
+            if (table == null || entityType.IsOwned()) continue;
+            if (SyncedTables.Contains(table))
+                modelBuilder.Entity(entityType.ClrType).ToTable(t => t.HasTrigger($"TR_{table}_SyncRow"));
+            if (OtherTriggers.TryGetValue(table, out var trigger))
+                modelBuilder.Entity(entityType.ClrType).ToTable(t => t.HasTrigger(trigger));
         }
     }
 }

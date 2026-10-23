@@ -7,6 +7,7 @@ using DMS.Data.EF.Constant;
 using DMS.Data.EF.Context;
 using DMS.Data.EF.Features;
 using DMS.Data.EF.Models.Circulars;
+using DMS.Data.EF.Models.Features;
 using DMS.Data.EF.Query.Circulars;
 using DMS.Infrastructure.Query.Circulars;
 using MediatR;
@@ -20,21 +21,17 @@ public class CIRService : ICIRService
 {
     private static readonly string[] LinkTypes = { "Amends", "Supersedes", "RefersTo" };
 
-    private const string LinkSelect = @"
-SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Title AS CircularTitle, c.CircularType,
-       c.Status AS CircularStatus, l.DM_ManualID, m.ManualNo, m.ManualName, l.DM_ManualVersionID, l.LinkType, l.Remarks,
-       CAST(l.IsActive AS bit) AS IsActive, l.ClosedOn, l.CreatedOn
-  FROM dbo.CIR_ManualLink l
-  JOIN dbo.CIR_Master c ON c.CIR_MasterID = l.CIR_MasterID
-  JOIN dbo.DM_Manual m ON m.DM_ManualID = l.DM_ManualID";
-
     private readonly CircularsContext _dbContext;
+    private readonly DmsContext _dms;
     private readonly IMediator _mediator;
     private readonly CIRGeneralQueries _queries;
     private readonly IMapper _mapper;
+    private readonly AttachmentStorage _storage;
 
-    public CIRService(CircularsContext context, IMediator mediator, CIRGeneralQueries queries, IMapper mapper)
+    public CIRService(CircularsContext context, DmsContext dms, IMediator mediator, CIRGeneralQueries queries, IMapper mapper, AttachmentStorage storage)
     {
+        _dms = dms;
+        _storage = storage;
         _dbContext = context;
         _mediator = mediator;
         _queries = queries;
@@ -304,6 +301,18 @@ SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Tit
         }
 
         var circularDto = _mapper.Map<EditCircularDto>(result.Circular);
+
+        // An attachment kept in a local folder or the cloud is loaded from there (BlobTableSettings).
+        if (circularDto.BlobContents == null && !string.IsNullOrEmpty(circularDto.FileName))
+        {
+            var blob = await _dbContext.CIR_Blob.AsNoTracking()
+                .Where(b => b.CIR_BlobID == circularDto.CIR_BlobID)
+                .Select(b => new { b.FileName, b.HQ_Storage_Option, b.HQ_Local_Folder, b.Cloud_ContainerName, b.Cloud_Directory })
+                .FirstOrDefaultAsync();
+            if (blob != null)
+                circularDto.BlobContents = await _storage.ReadAsync(AttachmentStorage.CircularTable, new AttachmentRef(circularDto.CIR_BlobID,
+                    blob.FileName, null, blob.HQ_Storage_Option, blob.HQ_Local_Folder, blob.Cloud_ContainerName, blob.Cloud_Directory));
+        }
         var toAckRows = await _dbContext.CIR_ToAck_Vsl
                             .Where(x =>
                                 x.CIR_MasterID == cirMasterId &&
@@ -467,146 +476,117 @@ SELECT l.CIR_ManualLinkID, l.CIR_MasterID, c.CIR_Number AS CircularNumber, c.Tit
         return true;
     }
 
+    /// <summary>Circular - manual links with the circular's number, title and status; the manual's number and name are added by <see cref="AddManualNamesAsync"/>.</summary>
+    private IQueryable<CircularManualLink> Links(IQueryable<CirManualLink> links)
+        => from l in links
+           join c in _dbContext.CIR_Master on l.CIR_MasterID equals c.CIR_MasterID
+           select new CircularManualLink
+           {
+               CIR_ManualLinkID = l.CIR_ManualLinkID,
+               CIR_MasterID = l.CIR_MasterID,
+               CircularNumber = c.CIR_Number,
+               CircularTitle = c.Title,
+               CircularType = c.CircularType,
+               CircularStatus = c.Status,
+               DM_ManualID = l.DM_ManualID,
+               DM_ManualVersionID = l.DM_ManualVersionID,
+               LinkType = l.LinkType,
+               Remarks = l.Remarks,
+               IsActive = l.IsActive == 1,
+               ClosedOn = l.ClosedOn,
+               CreatedOn = l.CreatedOn,
+           };
+
+    /// <summary>Adds ManualNo / ManualName and drops links whose manual is gone (the old query joined DM_Manual).</summary>
+    private async Task<List<CircularManualLink>> AddManualNamesAsync(List<CircularManualLink> links)
+    {
+        var ids = links.Select(l => l.DM_ManualID).Distinct().ToList();
+        if (ids.Count == 0) return links;
+        var manuals = (await _dms.DmManuals.AsNoTracking()
+                .Where(m => ids.Contains(m.DM_ManualID))
+                .Select(m => new { m.DM_ManualID, m.ManualNo, m.ManualName })
+                .ToListAsync())
+            .GroupBy(m => m.DM_ManualID).ToDictionary(g => g.Key, g => g.First());
+        var result = new List<CircularManualLink>(links.Count);
+        foreach (var link in links)
+        {
+            if (!manuals.TryGetValue(link.DM_ManualID, out var manual)) continue;
+            link.ManualNo = manual.ManualNo;
+            link.ManualName = manual.ManualName;
+            result.Add(link);
+        }
+        return result;
+    }
+
     public async Task<CircularExtras?> GetCircularesExtraInfoAsync(long circularId)
     {
-        // Read using the DbContext connection and map to the DTOs directly (avoids dependency on SqlDb here).
-        CircularExtras? extras = null;
-        var links = new List<CircularManualLink>();
-
-        var sql = @"SELECT c.CIR_MasterID, c.Status, c.AckDueDays, c.ValidUntil, c.SupersededByID, s.CIR_Number AS SupersededByNumber,
-       CAST(ISNULL(cat.RequiresValidUntil, 0) AS bit) AS RequiresValidUntil
-  FROM dbo.CIR_Master c
-  LEFT JOIN dbo.CIR_Master s ON s.CIR_MasterID = c.SupersededByID
-  LEFT JOIN dbo.CIR_Category cat ON cat.CIR_CategoryID = c.CIR_CategoryID
- WHERE c.CIR_MasterID = @id";
-
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            var p = cmd.CreateParameter();
-            p.ParameterName = "@id";
-            p.Value = circularId;
-            cmd.Parameters.Add(p);
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                extras = new CircularExtras
+        var extras = await (
+                from c in _dbContext.CIR_Master.AsNoTracking()
+                where c.CIR_MasterID == circularId
+                join s in _dbContext.CIR_Master on c.SupersededByID equals (long?)s.CIR_MasterID into ss
+                from s in ss.DefaultIfEmpty()
+                join cat in _dbContext.CIR_Category on c.CIR_CategoryID equals (long?)cat.CIR_CategoryID into cats
+                from cat in cats.DefaultIfEmpty()
+                select new CircularExtras
                 {
-                    CIR_MasterID = reader.GetInt64(reader.GetOrdinal("CIR_MasterID")),
-                    Status = reader.IsDBNull(reader.GetOrdinal("Status")) ? null : reader.GetString(reader.GetOrdinal("Status")),
-                    AckDueDays = reader.IsDBNull(reader.GetOrdinal("AckDueDays")) ? null : reader.GetInt32(reader.GetOrdinal("AckDueDays")),
-                    ValidUntil = reader.IsDBNull(reader.GetOrdinal("ValidUntil")) ? null : reader.GetDateTime(reader.GetOrdinal("ValidUntil")),
-                    SupersededByID = reader.IsDBNull(reader.GetOrdinal("SupersededByID")) ? null : reader.GetInt64(reader.GetOrdinal("SupersededByID")),
-                    SupersededByNumber = reader.IsDBNull(reader.GetOrdinal("SupersededByNumber")) ? null : reader.GetString(reader.GetOrdinal("SupersededByNumber")),
-                    RequiresValidUntil = !reader.IsDBNull(reader.GetOrdinal("RequiresValidUntil")) && reader.GetBoolean(reader.GetOrdinal("RequiresValidUntil")),
-                };
-            }
-
-            await reader.CloseAsync();
-
-            using var cmd2 = connection.CreateCommand();
-            cmd2.CommandText = LinkSelect + " WHERE l.CIR_MasterID = @id ORDER BY l.IsActive DESC, m.ManualNo";
-            var p2 = cmd2.CreateParameter();
-            p2.ParameterName = "@id";
-            p2.Value = circularId;
-            cmd2.Parameters.Add(p2);
-
-            using var reader2 = await cmd2.ExecuteReaderAsync();
-            while (await reader2.ReadAsync())
-            {
-                var link = new CircularManualLink
-                {
-                    CIR_ManualLinkID = reader2.GetInt64(reader2.GetOrdinal("CIR_ManualLinkID")),
-                    CIR_MasterID = reader2.GetInt64(reader2.GetOrdinal("CIR_MasterID")),
-                    CircularNumber = reader2.IsDBNull(reader2.GetOrdinal("CircularNumber")) ? null : reader2.GetString(reader2.GetOrdinal("CircularNumber")),
-                    CircularTitle = reader2.IsDBNull(reader2.GetOrdinal("CircularTitle")) ? null : reader2.GetString(reader2.GetOrdinal("CircularTitle")),
-                    CircularType = reader2.IsDBNull(reader2.GetOrdinal("CircularType")) ? null : reader2.GetString(reader2.GetOrdinal("CircularType")),
-                    CircularStatus = reader2.IsDBNull(reader2.GetOrdinal("CircularStatus")) ? null : reader2.GetString(reader2.GetOrdinal("CircularStatus")),
-                    DM_ManualID = reader2.GetInt64(reader2.GetOrdinal("DM_ManualID")),
-                    ManualNo = reader2.IsDBNull(reader2.GetOrdinal("ManualNo")) ? null : reader2.GetString(reader2.GetOrdinal("ManualNo")),
-                    ManualName = reader2.IsDBNull(reader2.GetOrdinal("ManualName")) ? null : reader2.GetString(reader2.GetOrdinal("ManualName")),
-                    DM_ManualVersionID = reader2.IsDBNull(reader2.GetOrdinal("DM_ManualVersionID")) ? null : reader2.GetInt64(reader2.GetOrdinal("DM_ManualVersionID")),
-                    LinkType = reader2.IsDBNull(reader2.GetOrdinal("LinkType")) ? string.Empty : reader2.GetString(reader2.GetOrdinal("LinkType")),
-                    Remarks = reader2.IsDBNull(reader2.GetOrdinal("Remarks")) ? null : reader2.GetString(reader2.GetOrdinal("Remarks")),
-                    IsActive = !reader2.IsDBNull(reader2.GetOrdinal("IsActive")) && reader2.GetBoolean(reader2.GetOrdinal("IsActive")),
-                    ClosedOn = reader2.IsDBNull(reader2.GetOrdinal("ClosedOn")) ? null : reader2.GetDateTime(reader2.GetOrdinal("ClosedOn")),
-                    CreatedOn = reader2.IsDBNull(reader2.GetOrdinal("CreatedOn")) ? null : reader2.GetDateTime(reader2.GetOrdinal("CreatedOn"))
-                };
-                links.Add(link);
-            }
-        }
-        finally
-        {
-            if (openedHere) await connection.CloseAsync();
-        }
-
+                    CIR_MasterID = c.CIR_MasterID,
+                    Status = c.Status,
+                    AckDueDays = c.AckDueDays,
+                    ValidUntil = c.ValidUntil,
+                    SupersededByID = c.SupersededByID,
+                    SupersededByNumber = s.CIR_Number,
+                    RequiresValidUntil = cat != null && cat.RequiresValidUntil == 1,
+                })
+            .FirstOrDefaultAsync();
         if (extras == null) return null;
-        extras.Links = links;
+
+        var links = await Links(_dbContext.CirManualLinks.AsNoTracking().Where(l => l.CIR_MasterID == circularId)).ToListAsync();
+        extras.Links = (await AddManualNamesAsync(links))
+            .OrderByDescending(l => l.IsActive).ThenBy(l => l.ManualNo).ToList();
         return extras;
     }
 
     public async Task<string?> SaveCircularesExtraInfoAsync(long circularId, SaveCircularExtras request)
     {
-        var current = await GetCircularesExtraInfoAsync(circularId);
-        if (current == null) return "Circular not found.";
+        var circular = await _dbContext.CIR_Master.FirstOrDefaultAsync(m => m.CIR_MasterID == circularId);
+        if (circular == null) return "Circular not found.";
         if (request.AckDueDays is < 0 or > 3650) return "Acknowledge-by days must be between 0 and 3650.";
-        await _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_Master SET AckDueDays = {request.AckDueDays}, ValidUntil = {request.ValidUntil?.Date} WHERE CIR_MasterID = {circularId}");
+        circular.AckDueDays = request.AckDueDays;
+        circular.ValidUntil = request.ValidUntil?.Date;
+        await _dbContext.SaveChangesAsync();
         return null;
     }
 
     public async Task<string?> AddManualLinkAsync(long circularId, AddManualLink request, OfficeUser user)
     {
         if (!LinkTypes.Contains(request.LinkType)) return "Link type must be Amends, Supersedes or RefersTo.";
-        // Verify circular exists
         if (!await _dbContext.CIR_Master.AnyAsync(m => m.CIR_MasterID == circularId))
             return "Circular not found.";
+        if (!await _dms.DmManuals.AnyAsync(m => m.DM_ManualID == request.ManualId && (m.IsDeleted ?? 0) != 1))
+            return "Manual not found.";
+        if (await _dbContext.CirManualLinks.AnyAsync(l => l.CIR_MasterID == circularId && l.DM_ManualID == request.ManualId && l.IsActive == 1))
+            return "This manual is already linked.";
 
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
+        _dbContext.CirManualLinks.Add(new CirManualLink
         {
-            using var checkCmd = connection.CreateCommand();
-            checkCmd.CommandText = "SELECT 1 FROM dbo.DM_Manual WHERE DM_ManualID = @id AND ISNULL(IsDeleted, 0) <> 1";
-            var cp = checkCmd.CreateParameter(); cp.ParameterName = "@id"; cp.Value = request.ManualId; checkCmd.Parameters.Add(cp);
-            var found = await checkCmd.ExecuteScalarAsync();
-            if (found == null) return "Manual not found.";
-
-            using var checkCmd2 = connection.CreateCommand();
-            checkCmd2.CommandText = "SELECT 1 FROM dbo.CIR_ManualLink WHERE CIR_MasterID = @c AND DM_ManualID = @m AND IsActive = 1";
-            var p1 = checkCmd2.CreateParameter(); p1.ParameterName = "@c"; p1.Value = circularId; checkCmd2.Parameters.Add(p1);
-            var p2 = checkCmd2.CreateParameter(); p2.ParameterName = "@m"; p2.Value = request.ManualId; checkCmd2.Parameters.Add(p2);
-            var exists = await checkCmd2.ExecuteScalarAsync();
-            if (exists != null) return "This manual is already linked.";
-
-            var id = await _dbContext.NextIdAsync("CIR_ManualLink");
-
-            using var insertCmd = connection.CreateCommand();
-            insertCmd.CommandText = @"INSERT dbo.CIR_ManualLink (CIR_ManualLinkID, Origin, VesselID, CIR_MasterID, DM_ManualID, DM_ManualVersionID, LinkType, Remarks, IsActive, CreatedBy, CreatedOn)
-VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
-            var ip = insertCmd.CreateParameter(); ip.ParameterName = "@id"; ip.Value = id; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@c"; ip.Value = circularId; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@m"; ip.Value = request.ManualId; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@v"; ip.Value = request.ManualVersionId is null ? (object)DBNull.Value : request.ManualVersionId; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@t"; ip.Value = request.LinkType; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@r"; ip.Value = (object?)Cut(request.Remarks, 500) ?? DBNull.Value; insertCmd.Parameters.Add(ip);
-            ip = insertCmd.CreateParameter(); ip.ParameterName = "@by"; ip.Value = user.UserId; insertCmd.Parameters.Add(ip);
-            await insertCmd.ExecuteNonQueryAsync();
-        }
-        finally
-        {
-            if (openedHere) await connection.CloseAsync();
-        }
+            CIR_ManualLinkID = await _dbContext.NextIdAsync("CIR_ManualLink"),
+            Origin = "HQ",
+            VesselID = -1,
+            CIR_MasterID = circularId,
+            DM_ManualID = request.ManualId,
+            DM_ManualVersionID = request.ManualVersionId,
+            LinkType = request.LinkType,
+            Remarks = Cut(request.Remarks, 500),
+            IsActive = 1,
+            CreatedBy = user.UserId,
+            CreatedOn = DateTime.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync();
         return null;
     }
 
     public Task RemoveManualLinkAsync(long linkId)
-        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM dbo.CIR_ManualLink WHERE CIR_ManualLinkID = {linkId}");
+        => _dbContext.CirManualLinks.Where(l => l.CIR_ManualLinkID == linkId).ExecuteDeleteAsync();
 
     public async Task<string?> CancelCircularAsync(long circularId, CancelCircular request, OfficeUser user)
     {
@@ -622,8 +602,7 @@ VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
         var remarks = string.IsNullOrWhiteSpace(request.Reason) ? null : $"Cancelled by {user.UserName}: {request.Reason.Trim()}";
 
         current.Status = "Cancelled";
-        // Use SQL update because SupersededByID is not exposed on the EF entity mapping used here.
-        // current.SupersededByID = request.SupersededById;
+        current.SupersededByID = request.SupersededById;
         current.ModifiedBy = user.UserId;
         current.ModifiedDate = DateTime.UtcNow;
         if (!string.IsNullOrWhiteSpace(remarks))
@@ -687,117 +666,74 @@ VALUES (@id, 'HQ', -1, @c, @m, @v, @t, @r, 1, @by, GETUTCDATE())";
 
     public async Task<List<CircularManualLink>> GetForManualAsync(long manualId)
     {
-        var result = new List<CircularManualLink>();
         // Draft circulars are listed too (the page marks them "Draft"), so a link made while the circular is
         // still being written shows on the manual at once. Temp rows (unsaved) are left out.
-        var sql = LinkSelect + @" WHERE l.DM_ManualID = @id AND ISNULL(c.IsDeleted, 0) <> 1 AND ISNULL(c.Status, '') <> 'Temp'
- ORDER BY l.IsActive DESC, COALESCE(c.ReleasedDate, c.DateIssued) DESC";
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = manualId; cmd.Parameters.Add(p);
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                var link = new CircularManualLink
+        var links = await (
+                from l in _dbContext.CirManualLinks.AsNoTracking()
+                join c in _dbContext.CIR_Master on l.CIR_MasterID equals c.CIR_MasterID
+                where l.DM_ManualID == manualId && (c.IsDeleted ?? 0) != 1 && (c.Status ?? "") != "Temp"
+                orderby l.IsActive descending, (c.ReleasedDate ?? c.DateIssued) descending
+                select new CircularManualLink
                 {
-                    CIR_ManualLinkID = reader.GetInt64(reader.GetOrdinal("CIR_ManualLinkID")),
-                    CIR_MasterID = reader.GetInt64(reader.GetOrdinal("CIR_MasterID")),
-                    CircularNumber = reader.IsDBNull(reader.GetOrdinal("CircularNumber")) ? null : reader.GetString(reader.GetOrdinal("CircularNumber")),
-                    CircularTitle = reader.IsDBNull(reader.GetOrdinal("CircularTitle")) ? null : reader.GetString(reader.GetOrdinal("CircularTitle")),
-                    CircularType = reader.IsDBNull(reader.GetOrdinal("CircularType")) ? null : reader.GetString(reader.GetOrdinal("CircularType")),
-                    CircularStatus = reader.IsDBNull(reader.GetOrdinal("CircularStatus")) ? null : reader.GetString(reader.GetOrdinal("CircularStatus")),
-                    DM_ManualID = reader.GetInt64(reader.GetOrdinal("DM_ManualID")),
-                    ManualNo = reader.IsDBNull(reader.GetOrdinal("ManualNo")) ? null : reader.GetString(reader.GetOrdinal("ManualNo")),
-                    ManualName = reader.IsDBNull(reader.GetOrdinal("ManualName")) ? null : reader.GetString(reader.GetOrdinal("ManualName")),
-                    DM_ManualVersionID = reader.IsDBNull(reader.GetOrdinal("DM_ManualVersionID")) ? null : reader.GetInt64(reader.GetOrdinal("DM_ManualVersionID")),
-                    LinkType = reader.IsDBNull(reader.GetOrdinal("LinkType")) ? string.Empty : reader.GetString(reader.GetOrdinal("LinkType")),
-                    Remarks = reader.IsDBNull(reader.GetOrdinal("Remarks")) ? null : reader.GetString(reader.GetOrdinal("Remarks")),
-                    IsActive = !reader.IsDBNull(reader.GetOrdinal("IsActive")) && reader.GetBoolean(reader.GetOrdinal("IsActive")),
-                    ClosedOn = reader.IsDBNull(reader.GetOrdinal("ClosedOn")) ? null : reader.GetDateTime(reader.GetOrdinal("ClosedOn")),
-                    CreatedOn = reader.IsDBNull(reader.GetOrdinal("CreatedOn")) ? null : reader.GetDateTime(reader.GetOrdinal("CreatedOn"))
-                };
-                result.Add(link);
-            }
-        }
-        finally
-        {
-            if (openedHere) await connection.CloseAsync();
-        }
-        return result;
+                    CIR_ManualLinkID = l.CIR_ManualLinkID,
+                    CIR_MasterID = l.CIR_MasterID,
+                    CircularNumber = c.CIR_Number,
+                    CircularTitle = c.Title,
+                    CircularType = c.CircularType,
+                    CircularStatus = c.Status,
+                    DM_ManualID = l.DM_ManualID,
+                    DM_ManualVersionID = l.DM_ManualVersionID,
+                    LinkType = l.LinkType,
+                    Remarks = l.Remarks,
+                    IsActive = l.IsActive == 1,
+                    ClosedOn = l.ClosedOn,
+                    CreatedOn = l.CreatedOn,
+                })
+            .ToListAsync();
+        return await AddManualNamesAsync(links);   // keeps the order
     }
 
-    public Task<int> CloseLinksForManualAsync(long manualId)
-        // Only links of circulars that were actually released: a draft's amendment cannot have been taken in yet.
-        => _dbContext.Database.ExecuteSqlInterpolatedAsync($@"UPDATE l SET l.IsActive = 0, l.ClosedOn = GETUTCDATE()
-  FROM dbo.CIR_ManualLink l
-  JOIN dbo.CIR_Master c ON c.CIR_MasterID = l.CIR_MasterID
- WHERE l.DM_ManualID = {manualId} AND l.IsActive = 1 AND l.LinkType IN ('Amends', 'Supersedes')
-   AND ISNULL(c.Status, '') NOT IN ('Temp', 'Draft')");
-
-    public async Task<List<CircularCategorySetting>> GetCategoriesAsync()
+    public async Task<int> CloseLinksForManualAsync(long manualId)
     {
-        var result = new List<CircularCategorySetting>();
-        var sql = @"SELECT CIR_CategoryID, CircularType, CategoryCode, Category, CAST(ISNULL(RequiresValidUntil, 0) AS bit) AS RequiresValidUntil
-  FROM dbo.CIR_Category WHERE ISNULL(isActive, 1) = 1 ORDER BY CircularType, Sortorder, Category";
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = sql;
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                result.Add(new CircularCategorySetting
-                {
-                    CIR_CategoryID = reader.GetInt64(reader.GetOrdinal("CIR_CategoryID")),
-                    CircularType = reader.IsDBNull(reader.GetOrdinal("CircularType")) ? null : reader.GetString(reader.GetOrdinal("CircularType")),
-                    CategoryCode = reader.IsDBNull(reader.GetOrdinal("CategoryCode")) ? null : reader.GetString(reader.GetOrdinal("CategoryCode")),
-                    Category = reader.IsDBNull(reader.GetOrdinal("Category")) ? null : reader.GetString(reader.GetOrdinal("Category")),
-                    RequiresValidUntil = !reader.IsDBNull(reader.GetOrdinal("RequiresValidUntil")) && reader.GetBoolean(reader.GetOrdinal("RequiresValidUntil"))
-                });
-            }
-        }
-        finally { if (openedHere) await connection.CloseAsync(); }
-        return result;
+        // Only links of circulars that were actually released: a draft's amendment cannot have been taken in yet.
+        var now = DateTime.UtcNow;
+        return await _dbContext.CirManualLinks
+            .Where(l => l.DM_ManualID == manualId && l.IsActive == 1 && (l.LinkType == "Amends" || l.LinkType == "Supersedes")
+                        && _dbContext.CIR_Master.Any(c => c.CIR_MasterID == l.CIR_MasterID
+                                                          && (c.Status ?? "") != "Temp" && (c.Status ?? "") != "Draft"))
+            .ExecuteUpdateAsync(u => u.SetProperty(l => l.IsActive, 0).SetProperty(l => l.ClosedOn, now));
     }
+
+    public Task<List<CircularCategorySetting>> GetCategoriesAsync()
+        => _dbContext.CIR_Category.AsNoTracking()
+            .Where(c => (c.isActive ?? 1) == 1)
+            .OrderBy(c => c.CircularType).ThenBy(c => c.Sortorder).ThenBy(c => c.Category)
+            .Select(c => new CircularCategorySetting
+            {
+                CIR_CategoryID = c.CIR_CategoryID,
+                CircularType = c.CircularType,
+                CategoryCode = c.CategoryCode,
+                Category = c.Category,
+                RequiresValidUntil = c.RequiresValidUntil == 1,
+            })
+            .ToListAsync();
 
     public Task SaveCategoryAsync(long categoryId, bool requiresValidUntil)
-        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.CIR_Category SET RequiresValidUntil = {(requiresValidUntil ? 1 : 0)} WHERE CIR_CategoryID = {categoryId}");
+        => _dbContext.CIR_Category.Where(c => c.CIR_CategoryID == categoryId)
+            .ExecuteUpdateAsync(u => u.SetProperty(c => c.RequiresValidUntil, requiresValidUntil ? 1 : 0));
 
-    public async Task<ManualExtras?> GetManualAsync(long manualId)
-    {
-        ManualExtras? result = null;
-        var connection = _dbContext.Database.GetDbConnection();
-        var openedHere = connection.State != System.Data.ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync();
-        try
-        {
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT DM_ManualID, AckDueDays FROM dbo.DM_Manual WHERE DM_ManualID = @id";
-            var p = cmd.CreateParameter(); p.ParameterName = "@id"; p.Value = manualId; cmd.Parameters.Add(p);
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                result = new ManualExtras
-                {
-                    DM_ManualID = reader.GetInt64(reader.GetOrdinal("DM_ManualID")),
-                    AckDueDays = reader.IsDBNull(reader.GetOrdinal("AckDueDays")) ? null : reader.GetInt32(reader.GetOrdinal("AckDueDays"))
-                };
-            }
-        }
-        finally { if (openedHere) await connection.CloseAsync(); }
-        return result;
-    }
+    public Task<ManualExtras?> GetManualAsync(long manualId)
+        => _dms.DmManuals.AsNoTracking()
+            .Where(m => m.DM_ManualID == manualId)
+            .Select(m => new ManualExtras { DM_ManualID = m.DM_ManualID, AckDueDays = m.AckDueDays })
+            .FirstOrDefaultAsync();
 
     public Task SaveManualAsync(long manualId, int? ackDueDays)
-        => _dbContext.Database.ExecuteSqlInterpolatedAsync($"UPDATE dbo.DM_Manual SET AckDueDays = {(ackDueDays is null ? (int?)null : Math.Clamp(ackDueDays.Value, 0, 3650))} WHERE DM_ManualID = {manualId}");
+    {
+        int? days = ackDueDays is null ? null : Math.Clamp(ackDueDays.Value, 0, 3650);
+        return _dms.DmManuals.Where(m => m.DM_ManualID == manualId)
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.AckDueDays, days));
+    }
 
     private static string? Cut(string? s, int max) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Length <= max ? s.Trim() : s.Trim()[..max];
 

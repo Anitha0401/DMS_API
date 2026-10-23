@@ -116,8 +116,10 @@ public class ManualsController : DmsControllerBase
 
     // Version History dialog
     [HttpGet("GetManualVersionHistory")]
-    public async Task<ActionResult<List<ManualVersionHistoryDto>>> GetManualVersionHistory(long dm_ManualID) =>
-        Ok(await _service.GetManualVersionHistoryAsync(dm_ManualID));
+    public async Task<ActionResult<List<ManualVersionHistoryDto>>> GetManualVersionHistory(long dm_ManualID)
+    {
+        return Ok(await _service.GetManualVersionHistoryAsync(dm_ManualID));
+    }
 
     // Compare Version - get manual basic details
     [HttpGet("GetManualSimpleDetails/{dm_ManualID}")]
